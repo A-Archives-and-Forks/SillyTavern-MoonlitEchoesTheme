@@ -1392,8 +1392,8 @@ function open_popout() {
     </div>
     `);
 
-    // Add to body
-    $('body').append($popout);
+    // Add to movingDivs
+    $('#movingDivs').append($popout);
 
     // Move content to popout
     const $content_container = $popout.find('#moonlit_echoes_content_container');
