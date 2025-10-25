@@ -7,15 +7,16 @@
 const EXTENSION_NAME = 'Moonlit Echoes Theme';
 const extensionName = "SillyTavern-MoonlitEchoesTheme";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
-const THEME_VERSION = "3.0.0";
+export const THEME_VERSION = "3.0.0";
 
 // Import required functions for drag functionality
 import { dragElement } from '../../../RossAscends-mods.js';
 import { loadMovingUIState } from '../../../power-user.js';
 import { t } from '../../../i18n.js';
 import { tabMappings, themeCustomSettings } from './src/config/theme-settings.js';
-import { defaultSettings, ensureSettingsStructure } from './src/config/default-settings.js';
 import { settingsKey, getSettings as getExtensionSettings, saveSettings as saveExtensionSettings } from './src/services/settings-service.js';
+import { initExtension } from './src/bootstrap/init-extension.js';
+import './src/bootstrap/lifecycle-hooks.js';
 import { initControls, toggleSettingsPopout } from './src/ui/controls.js';
 import {
     configurePresetManager,
@@ -35,55 +36,16 @@ import {
 } from './src/ui/preset-manager.js';
 import { configureSettingsTabs, createTabbedSettingsUI } from './src/ui/settings-tabs.js';
 import { applyAllThemeSettings as applyAllThemeSettingsCore } from './src/core/theme-applier.js';
-import { initAvatarInjector, initFormSheldHeightMonitor } from './src/core/observers.js';
+import { initAvatarInjector } from './src/core/observers.js';
 import { rgbaToHex, getAlphaFromRgba } from './src/utils/color.js';
 
 // Track if custom chat styles have been added
 let customChatStylesAdded = false;
 const MOONLIT_LISTENER_KEY = '__moonlitEchoesListeners';
 
-function applyAllThemeSettings(contextOverride) {
+export function applyAllThemeSettings(contextOverride) {
     return applyAllThemeSettingsCore(settingsKey, themeCustomSettings, contextOverride);
 }
-
-/**
- * Main extension initialization function
- * Executed when the extension loads, configures settings and initializes features
- */
-(function initExtension() {
-    // Get SillyTavern context
-    const context = SillyTavern.getContext();
-
-    // Initialize settings
-    let extensionSettings = getExtensionSettings(context);
-    if (!extensionSettings) {
-        context.extensionSettings[settingsKey] = structuredClone(defaultSettings);
-        extensionSettings = getExtensionSettings(context);
-    }
-
-    // Ensure settings structure is up-to-date
-    ensureSettingsStructure(extensionSettings);
-
-    // Ensure all default setting keys exist
-    for (const key of Object.keys(defaultSettings)) {
-        if (key !== 'presets' && key !== 'activePreset' && extensionSettings[key] === undefined) {
-            extensionSettings[key] = defaultSettings[key];
-        }
-    }
-
-    // Save settings
-    saveExtensionSettings(context);
-
-    // Automatically load or remove CSS based on enabled status
-    toggleCss(extensionSettings.enabled);
-
-    // Initialize extension UI when DOM is fully loaded
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initExtensionUI);
-    } else {
-        initExtensionUI();
-    }
-})();
 
 /**
  * Initialize slash commands - only when theme is enabled
@@ -224,7 +186,7 @@ function initializeSlashCommands() {
  * Initialize UI elements and events for the extension
  * Includes settings panel, chat style, color picker, and sidebar button
  */
-function initExtensionUI() {
+export function initExtensionUI() {
     configurePresetManager({
         settingsKey,
         themeVersion: THEME_VERSION,
@@ -789,7 +751,7 @@ return new Promise((resolve) => {
  * Automatically load or remove CSS based on enabled status in settings
  * @param {boolean} shouldLoad - If true, load CSS, otherwise remove
  */
-function toggleCss(shouldLoad) {
+export function toggleCss(shouldLoad) {
     // Get existing <link> elements
     const existingLinkStyle = document.getElementById('MoonlitEchosTheme-style');
     const existingLinkExt = document.getElementById('MoonlitEchosTheme-extension');
@@ -1294,7 +1256,7 @@ container.appendChild(versionContainer);
 * Add modern compact styles
 * Add more modern, more compact UI styles
 */
-function addModernCompactStyles() {
+export function addModernCompactStyles() {
 // Check if styles already added
 if (document.getElementById('moonlit-modern-styles')) {
     return;
@@ -2377,7 +2339,7 @@ function initChatDisplaySwitcher() {
 * @param {string} varId - CSS variable ID
 * @param {string} value - Setting value
 */
-function applyThemeSetting(varId, value) {
+export function applyThemeSetting(varId, value) {
     // Directly set CSS variable
     document.documentElement.style.setProperty(`--${varId}`, value, 'important');
 
@@ -2418,7 +2380,7 @@ document.addEventListener('themeSettingChanged', (ev) => {
 * Use this function to add new settings at runtime
 * @param {Object} settingConfig - Setting configuration object
 */
-function addCustomSetting(settingConfig) {
+export function addCustomSetting(settingConfig) {
     // Check setting validity
     if (!settingConfig || !settingConfig.varId || !settingConfig.type) {
         return;
@@ -2467,195 +2429,6 @@ function addCustomSetting(settingConfig) {
 }
 
 
-// Public API
-window.MoonlitEchoesTheme = {
-    // Initialization function
-    init: function() {
-        applyAllThemeSettings();
-        initializeThemeColorOnDemand();
-        syncMoonlitPresetsWithThemeList();
-    },
-
-    // Add new setting
-    addSetting: addCustomSetting,
-
-    // Apply setting
-    applySetting: applyThemeSetting,
-
-    // Get all settings
-    getSettings: function() {
-        return getExtensionSettings();
-    },
-
-    // Get setting configuration
-    getSettingsConfig: function() {
-        return [...themeCustomSettings];
-    },
-
-    // Preset management
-    presets: {
-        // Get all presets
-        getAll: function() {
-            const context = SillyTavern.getContext();
-            const settings = getExtensionSettings(context);
-            return settings?.presets || {};
-        },
-
-        // Get current active preset
-        getActive: function() {
-            const context = SillyTavern.getContext();
-            const settings = getExtensionSettings(context);
-            return {
-                name: settings.activePreset,
-                settings: settings.presets[settings.activePreset] || {}
-            };
-        },
-
-        // Create new preset
-        create: function(name, settingsObj) {
-            const context = SillyTavern.getContext();
-            const settings = getExtensionSettings(context);
-
-            // Check if name is valid
-            if (!name || typeof name !== 'string') {
-                return false;
-            }
-
-            // Create new preset
-            settings.presets[name] = settingsObj || {};
-
-            // Save settings
-            saveExtensionSettings(context);
-
-            // Update theme selector
-            syncMoonlitPresetsWithThemeList();
-
-            return true;
-        },
-
-        // Load preset
-        load: function(name) {
-            return loadPreset(name);
-        },
-
-        // Update existing preset
-        update: function(name, settingsObj) {
-            const context = SillyTavern.getContext();
-            const settings = getExtensionSettings(context);
-
-            // Check if preset exists
-            if (!settings.presets[name]) {
-                return false;
-            }
-
-            // Update preset
-            settings.presets[name] = settingsObj || settings.presets[name];
-
-            // Save settings
-            saveExtensionSettings(context);
-
-            return true;
-        },
-
-        // Delete preset
-        delete: function(name) {
-            const context = SillyTavern.getContext();
-            const settings = getExtensionSettings(context);
-
-            // Check if it's the Default preset
-            if (name === 'Default') {
-                return false;
-            }
-
-            // Check if preset exists
-            if (!settings.presets[name]) {
-                return false;
-            }
-
-            // Check if it's the last preset
-            if (Object.keys(settings.presets).length <= 1) {
-                return false;
-            }
-
-            // If deleting current active preset, switch to Default
-            if (settings.activePreset === name) {
-                settings.activePreset = 'Default';
-                applyPresetToSettings('Default');
-            }
-
-            // Delete preset
-            delete settings.presets[name];
-
-            // Save settings
-            saveExtensionSettings(context);
-
-            // Update theme selector
-            syncMoonlitPresetsWithThemeList();
-
-            return true;
-        },
-
-        // Export preset as JSON
-        export: function(name) {
-            const context = SillyTavern.getContext();
-            const settings = getExtensionSettings(context);
-
-            // Check if preset exists
-            if (!settings.presets[name]) {
-                return null;
-            }
-
-            // Create export object
-            return {
-                moonlitEchoesPreset: true,
-                presetVersion: THEME_VERSION,
-                presetName: name,
-                settings: settings.presets[name]
-            };
-        },
-
-        // Import preset
-        import: function(jsonData) {
-            // Check format
-            if (!jsonData || !jsonData.moonlitEchoesPreset || !jsonData.presetName || !jsonData.settings) {
-                return false;
-            }
-
-            const context = SillyTavern.getContext();
-            const settings = getExtensionSettings(context);
-
-            // Get preset name
-            const presetName = jsonData.presetName;
-
-            // Create/update preset
-            settings.presets[presetName] = jsonData.settings;
-
-            // Save settings
-            saveExtensionSettings(context);
-
-            // Update theme selector
-            syncMoonlitPresetsWithThemeList();
-
-            return true;
-        }
-    }
-};
-
-// Expose initialization function for external call
-window.initializeThemeColorOnDemand = function() {
-    applyAllThemeSettings();
-    syncMoonlitPresetsWithThemeList();
-};
-
-// Ensure modern compact styles are added after page load
-document.addEventListener('DOMContentLoaded', function() {
-    // Add modern compact styles at the appropriate time
-    addModernCompactStyles();
-
-    // Sync Moonlit presets with theme list
-    syncMoonlitPresetsWithThemeList();
-});
-
 // Opacity slider color update
 function updateColorSliderThumb(varId, hexColor) {
     const alphaSlider = document.querySelector(`#cts-${varId}-alpha`);
@@ -2701,4 +2474,4 @@ document.addEventListener('colorChanged', function(event) {
     updateColorSliderThumb(varId, hexColor);
 });
 
-window.formSheldHeightController = initFormSheldHeightMonitor();
+initExtension();
