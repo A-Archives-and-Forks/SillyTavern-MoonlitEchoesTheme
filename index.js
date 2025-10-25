@@ -5,16 +5,17 @@
 
 // Global settings and constants
 const EXTENSION_NAME = 'Moonlit Echoes Theme';
-const settingsKey = 'SillyTavernMoonlitEchoesTheme';
 const extensionName = "SillyTavern-MoonlitEchoesTheme";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
-const THEME_VERSION = "2.3.0";
+const THEME_VERSION = "3.0.0";
 
 // Import required functions for drag functionality
 import { dragElement } from '../../../RossAscends-mods.js';
 import { loadMovingUIState } from '../../../power-user.js';
 import { t } from '../../../i18n.js';
 import { tabMappings, themeCustomSettings } from './src/config/theme-settings.js';
+import { defaultSettings, ensureSettingsStructure } from './src/config/default-settings.js';
+import { settingsKey, getSettings as getExtensionSettings, saveSettings as saveExtensionSettings } from './src/services/settings-service.js';
 import { initControls, toggleSettingsPopout } from './src/ui/controls.js';
 import {
     configurePresetManager,
@@ -41,31 +42,6 @@ import { rgbaToHex, getAlphaFromRgba } from './src/utils/color.js';
 let customChatStylesAdded = false;
 const MOONLIT_LISTENER_KEY = '__moonlitEchoesListeners';
 
-/**
- * Generate default settings
- * Use "Moonlit Echoes - by Rivelle" as the default theme name
- */
-function generateDefaultSettings() {
-    const settings = {
-        enabled: true,
-        presets: {
-            "Moonlit Echoes - by Rivelle": {} // Official preset
-        },
-        activePreset: "Moonlit Echoes - by Rivelle"
-    };
-
-    // Add all settings to the default preset
-    themeCustomSettings.forEach(setting => {
-        settings[setting.varId] = setting.default;
-        settings.presets["Moonlit Echoes - by Rivelle"][setting.varId] = setting.default;
-    });
-
-    return Object.freeze(settings);
-}
-
-// Generate default settings
-const defaultSettings = generateDefaultSettings();
-
 function applyAllThemeSettings(contextOverride) {
     return applyAllThemeSettingsCore(settingsKey, themeCustomSettings, contextOverride);
 }
@@ -79,25 +55,27 @@ function applyAllThemeSettings(contextOverride) {
     const context = SillyTavern.getContext();
 
     // Initialize settings
-    if (!context.extensionSettings[settingsKey]) {
+    let extensionSettings = getExtensionSettings(context);
+    if (!extensionSettings) {
         context.extensionSettings[settingsKey] = structuredClone(defaultSettings);
+        extensionSettings = getExtensionSettings(context);
     }
 
     // Ensure settings structure is up-to-date
-    ensureSettingsStructure(context.extensionSettings[settingsKey]);
+    ensureSettingsStructure(extensionSettings);
 
     // Ensure all default setting keys exist
     for (const key of Object.keys(defaultSettings)) {
-        if (key !== 'presets' && key !== 'activePreset' && context.extensionSettings[settingsKey][key] === undefined) {
-            context.extensionSettings[settingsKey][key] = defaultSettings[key];
+        if (key !== 'presets' && key !== 'activePreset' && extensionSettings[key] === undefined) {
+            extensionSettings[key] = defaultSettings[key];
         }
     }
 
     // Save settings
-    context.saveSettingsDebounced();
+    saveExtensionSettings(context);
 
     // Automatically load or remove CSS based on enabled status
-    toggleCss(context.extensionSettings[settingsKey].enabled);
+    toggleCss(extensionSettings.enabled);
 
     // Initialize extension UI when DOM is fully loaded
     if (document.readyState === 'loading') {
@@ -108,62 +86,13 @@ function applyAllThemeSettings(contextOverride) {
 })();
 
 /**
- * Ensure the settings structure is up-to-date
- * @param {Object} settings - Settings object
- */
-function ensureSettingsStructure(settings) {
-    // Ensure presets property exists
-    if (!settings.presets) {
-        settings.presets = {};
-    }
-
-    // If no presets, create official preset
-    if (Object.keys(settings.presets).length === 0) {
-        settings.presets["Moonlit Echoes - by Rivelle"] = {};
-
-        // Copy values from current settings to official preset
-        themeCustomSettings.forEach(setting => {
-            const { varId } = setting;
-            if (settings[varId] !== undefined) {
-                settings.presets["Moonlit Echoes - by Rivelle"][varId] = settings[varId];
-            } else {
-                settings.presets["Moonlit Echoes - by Rivelle"][varId] = setting.default;
-            }
-        });
-    }
-
-    // Ensure activePreset property exists
-    if (!settings.activePreset || !settings.presets[settings.activePreset]) {
-        // If no active preset or it doesn't exist, use first available preset
-        const firstPreset = Object.keys(settings.presets)[0] || "Moonlit Echoes - by Rivelle";
-        settings.activePreset = firstPreset;
-    }
-
-    // Handle old "Moonlit Echoes" preset
-    if (settings.presets["Moonlit Echoes"]) {
-        // If "Moonlit Echoes - by Rivelle" already exists, do nothing
-        if (!settings.presets["Moonlit Echoes - by Rivelle"]) {
-            settings.presets["Moonlit Echoes - by Rivelle"] = settings.presets["Moonlit Echoes"];
-        }
-
-        // Delete old preset
-        delete settings.presets["Moonlit Echoes"];
-
-        // If active preset is "Moonlit Echoes", update active preset name
-        if (settings.activePreset === "Moonlit Echoes") {
-            settings.activePreset = "Moonlit Echoes - by Rivelle";
-        }
-    }
-}
-
-/**
  * Initialize slash commands - only when theme is enabled
  * Register various chat style slash commands for Moonlit Echoes Theme
  */
 function initializeSlashCommands() {
     // Get SillyTavern context and check if theme is enabled
     const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
+    const settings = getExtensionSettings(context);
 
     // Only initialize slash commands when theme is enabled
     if (!settings.enabled) {
@@ -358,7 +287,7 @@ function initExtensionUI() {
         initializeSlashCommands();
 
         const context = SillyTavern.getContext();
-        const settings = context.extensionSettings[settingsKey] || {};
+        const settings = getExtensionSettings(context) || {};
         applyRawCustomCss(settings.rawCustomCss || '');
     });
 
@@ -447,7 +376,7 @@ function attachMoonlitListener(element, eventType, handler) {
 
 function getMoonlitSettings() {
     const context = SillyTavern.getContext();
-    return context.extensionSettings[settingsKey] || {};
+    return getExtensionSettings(context) || {};
 }
 
 function isMoonlitPreset(presetName) {
@@ -750,7 +679,7 @@ function addThemeButtonsHint() {
 
     // Get settings
     const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
+    const settings = getExtensionSettings(context);
 
     // Check if theme is enabled
     if (!settings.enabled) {
@@ -930,7 +859,7 @@ function updateAllCheckboxStyles(extensionEnabled) {
 
     // Get settings
     const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
+    const settings = getExtensionSettings(context);
 
     // Go through all checkbox settings and update their styles
     themeCustomSettings.forEach(setting => {
@@ -1016,7 +945,7 @@ function renderExtensionSettings() {
     inlineDrawer.append(inlineDrawerToggle, inlineDrawerContent);
 
     // Get settings
-    const settings = context.extensionSettings[settingsKey];
+    const settings = getExtensionSettings(context);
 
     // Add creator
     addThemeCreatorInfo(inlineDrawerContent);
@@ -1046,7 +975,7 @@ function renderExtensionSettings() {
             initializeSlashCommands();
         }
 
-        context.saveSettingsDebounced();
+        saveExtensionSettings(context);
     });
 
     const enabledCheckboxText = document.createElement('span');
@@ -1135,33 +1064,33 @@ function removeCustomChatStyles() {
 * @param {Object} settings - Current settings object
 */
 function updateSettingsUI() {
-const context = SillyTavern.getContext();
-const settings = context.extensionSettings[settingsKey];
+    const context = SillyTavern.getContext();
+    const settings = getExtensionSettings(context);
 
-// Update all setting item UIs
-themeCustomSettings.forEach(setting => {
-    const { varId, type } = setting;
-    const value = settings[varId];
+    // Update all setting item UIs
+    themeCustomSettings.forEach(setting => {
+        const { varId, type } = setting;
+        const value = settings[varId];
 
-    // Update UI based on setting type
-    switch (type) {
-        case 'color':
-            updateColorPickerUI(varId, value);
-            break;
-        case 'slider':
-            updateSliderUI(varId, value);
-            break;
-        case 'select':
-            updateSelectUI(varId, value);
-            break;
-        case 'text':
-            updateTextInputUI(varId, value);
-            break;
-        case 'checkbox':
-            updateCheckboxUI(varId, value);
-            break;
-    }
-});
+        // Update UI based on setting type
+        switch (type) {
+            case 'color':
+                updateColorPickerUI(varId, value);
+                break;
+            case 'slider':
+                updateSliderUI(varId, value);
+                break;
+            case 'select':
+                updateSelectUI(varId, value);
+                break;
+            case 'text':
+                updateTextInputUI(varId, value);
+                break;
+            case 'checkbox':
+                updateCheckboxUI(varId, value);
+                break;
+        }
+    });
 }
 
 /**
@@ -1938,7 +1867,7 @@ function createColorPicker(container, setting, settings) {
                 // Update and apply settings
                 settings[varId] = rgbaColor;
                 applyThemeSetting(varId, rgbaColor);
-                context.saveSettingsDebounced();
+                saveExtensionSettings(context);
             } else {
                 // Restore to previous value
                 const previousHex = rgbaToHex(settings[varId]);
@@ -2005,7 +1934,7 @@ function createColorPicker(container, setting, settings) {
         // Update and apply settings
         settings[varId] = rgbaColor;
         applyThemeSetting(varId, rgbaColor);
-        context.saveSettingsDebounced();
+        saveExtensionSettings(context);
 
         // Trigger custom event to notify color has changed
         document.dispatchEvent(new CustomEvent('colorChanged', {
@@ -2035,7 +1964,7 @@ function createColorPicker(container, setting, settings) {
         // Update and apply settings
         settings[varId] = rgbaColor;
         applyThemeSetting(varId, rgbaColor);
-        context.saveSettingsDebounced();
+        saveExtensionSettings(context);
     }
 
     // Assemble opacity control
@@ -2104,7 +2033,7 @@ function createSlider(container, setting, settings) {
         applyThemeSetting(varId, slider.value);
 
         // Save settings
-        context.saveSettingsDebounced();
+        saveExtensionSettings(context);
     });
 
     // Number input change event
@@ -2119,7 +2048,7 @@ function createSlider(container, setting, settings) {
         applyThemeSetting(varId, numberInput.value);
 
         // Save settings
-        context.saveSettingsDebounced();
+        saveExtensionSettings(context);
     });
 
     sliderContainer.appendChild(slider);
@@ -2160,7 +2089,7 @@ function createSelect(container, setting, settings) {
         applyThemeSetting(varId, select.value);
 
         // Save settings
-        context.saveSettingsDebounced();
+        saveExtensionSettings(context);
     });
 
     container.appendChild(select);
@@ -2192,7 +2121,7 @@ function createTextInput(container, setting, settings) {
         applyThemeSetting(varId, input.value);
 
         // Save settings
-        context.saveSettingsDebounced();
+        saveExtensionSettings(context);
     });
 
     container.appendChild(input);
@@ -2215,7 +2144,7 @@ function createTextareaInput(container, setting, settings) {
         if (varId === 'rawCustomCss') {
             applyRawCustomCss(settings[varId]);
         }
-        context.saveSettingsDebounced();
+        saveExtensionSettings(context);
     };
 
     // Apply on change & input (input gives instant feedback)
@@ -2339,7 +2268,7 @@ function createCheckbox(container, setting, settings) {
         applyThemeSetting(varId, checkbox.checked ? 'true' : 'false');
 
         // Save settings
-        context.saveSettingsDebounced();
+        saveExtensionSettings(context);
     });
 
     // Add to row container in the order: label first, then checkbox
@@ -2370,7 +2299,7 @@ function createCheckbox(container, setting, settings) {
  */
 function initChatDisplaySwitcher() {
     const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
+    const settings = getExtensionSettings(context);
 
     const themeSelect = document.getElementById("themes");
     const chatDisplaySelect = document.getElementById("chat_display");
@@ -2506,7 +2435,7 @@ function addCustomSetting(settingConfig) {
 
     // Get settings and add default value
     const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
+    const settings = getExtensionSettings(context);
 
     // If settings don't have this item, add default value
     if (settings[settingConfig.varId] === undefined) {
@@ -2514,7 +2443,7 @@ function addCustomSetting(settingConfig) {
     }
 
     // Save settings
-    context.saveSettingsDebounced();
+    saveExtensionSettings(context);
 
     // Re-render settings panel
     const settingsContainer = document.querySelector(`#${settingsKey}-drawer .inline-drawer-content`);
@@ -2555,8 +2484,7 @@ window.MoonlitEchoesTheme = {
 
     // Get all settings
     getSettings: function() {
-        const context = SillyTavern.getContext();
-        return context.extensionSettings[settingsKey];
+        return getExtensionSettings();
     },
 
     // Get setting configuration
@@ -2569,13 +2497,14 @@ window.MoonlitEchoesTheme = {
         // Get all presets
         getAll: function() {
             const context = SillyTavern.getContext();
-            return context.extensionSettings[settingsKey].presets || {};
+            const settings = getExtensionSettings(context);
+            return settings?.presets || {};
         },
 
         // Get current active preset
         getActive: function() {
             const context = SillyTavern.getContext();
-            const settings = context.extensionSettings[settingsKey];
+            const settings = getExtensionSettings(context);
             return {
                 name: settings.activePreset,
                 settings: settings.presets[settings.activePreset] || {}
@@ -2585,7 +2514,7 @@ window.MoonlitEchoesTheme = {
         // Create new preset
         create: function(name, settingsObj) {
             const context = SillyTavern.getContext();
-            const settings = context.extensionSettings[settingsKey];
+            const settings = getExtensionSettings(context);
 
             // Check if name is valid
             if (!name || typeof name !== 'string') {
@@ -2596,7 +2525,7 @@ window.MoonlitEchoesTheme = {
             settings.presets[name] = settingsObj || {};
 
             // Save settings
-            context.saveSettingsDebounced();
+            saveExtensionSettings(context);
 
             // Update theme selector
             syncMoonlitPresetsWithThemeList();
@@ -2612,7 +2541,7 @@ window.MoonlitEchoesTheme = {
         // Update existing preset
         update: function(name, settingsObj) {
             const context = SillyTavern.getContext();
-            const settings = context.extensionSettings[settingsKey];
+            const settings = getExtensionSettings(context);
 
             // Check if preset exists
             if (!settings.presets[name]) {
@@ -2623,7 +2552,7 @@ window.MoonlitEchoesTheme = {
             settings.presets[name] = settingsObj || settings.presets[name];
 
             // Save settings
-            context.saveSettingsDebounced();
+            saveExtensionSettings(context);
 
             return true;
         },
@@ -2631,7 +2560,7 @@ window.MoonlitEchoesTheme = {
         // Delete preset
         delete: function(name) {
             const context = SillyTavern.getContext();
-            const settings = context.extensionSettings[settingsKey];
+            const settings = getExtensionSettings(context);
 
             // Check if it's the Default preset
             if (name === 'Default') {
@@ -2658,7 +2587,7 @@ window.MoonlitEchoesTheme = {
             delete settings.presets[name];
 
             // Save settings
-            context.saveSettingsDebounced();
+            saveExtensionSettings(context);
 
             // Update theme selector
             syncMoonlitPresetsWithThemeList();
@@ -2669,7 +2598,7 @@ window.MoonlitEchoesTheme = {
         // Export preset as JSON
         export: function(name) {
             const context = SillyTavern.getContext();
-            const settings = context.extensionSettings[settingsKey];
+            const settings = getExtensionSettings(context);
 
             // Check if preset exists
             if (!settings.presets[name]) {
@@ -2693,7 +2622,7 @@ window.MoonlitEchoesTheme = {
             }
 
             const context = SillyTavern.getContext();
-            const settings = context.extensionSettings[settingsKey];
+            const settings = getExtensionSettings(context);
 
             // Get preset name
             const presetName = jsonData.presetName;
@@ -2702,7 +2631,7 @@ window.MoonlitEchoesTheme = {
             settings.presets[presetName] = jsonData.settings;
 
             // Save settings
-            context.saveSettingsDebounced();
+            saveExtensionSettings(context);
 
             // Update theme selector
             syncMoonlitPresetsWithThemeList();
