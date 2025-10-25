@@ -4,10 +4,8 @@
  */
 
 // Global settings and constants
-const EXTENSION_NAME = 'Moonlit Echoes Theme';
-const extensionName = "SillyTavern-MoonlitEchoesTheme";
-const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
-export const THEME_VERSION = "3.0.0";
+import { EXTENSION_NAME, EXTENSION_ID, EXTENSION_FOLDER_PATH, THEME_VERSION } from './src/config/theme-info.js';
+export { THEME_VERSION } from './src/config/theme-info.js';
 
 // Import required functions for drag functionality
 import { dragElement } from '../../../RossAscends-mods.js';
@@ -23,26 +21,17 @@ import {
     configurePresetManager,
     createPresetManagerUI,
     initPresetManager,
-    importPreset,
-    exportActivePreset,
-    updateCurrentPreset,
-    saveAsNewPreset,
-    deleteCurrentPreset,
-    loadPreset,
     applyActivePreset,
-    applyPresetToSettings,
-    updatePresetSelector,
-    handleMoonlitPresetImport,
-    syncMoonlitPresetsWithThemeList,
 } from './src/ui/preset-manager.js';
 import { configureSettingsTabs, createTabbedSettingsUI } from './src/ui/settings-tabs.js';
 import { applyAllThemeSettings as applyAllThemeSettingsCore } from './src/core/theme-applier.js';
 import { initAvatarInjector } from './src/core/observers.js';
 import { rgbaToHex, getAlphaFromRgba } from './src/utils/color.js';
+import { addThemeButtonsHint } from './src/services/hints.js';
+import { integrateWithThemeSelector } from './src/services/theme-selector.js';
 
 // Track if custom chat styles have been added
 let customChatStylesAdded = false;
-const MOONLIT_LISTENER_KEY = '__moonlitEchoesListeners';
 
 export function applyAllThemeSettings(contextOverride) {
     return applyAllThemeSettingsCore(settingsKey, themeCustomSettings, contextOverride);
@@ -149,145 +138,6 @@ function addExtensionMenuButton() {
     $button.click(() => {
         toggleSettingsPopout();
     });
-}
-
-/**
- * Integrate with theme selector
- * Listen to UI theme selector changes and switch presets automatically
- */
-function integrateWithThemeSelector() {
-    const themeSelector = document.getElementById('themes');
-    if (!themeSelector) {
-        return;
-    }
-
-    const importButton = document.getElementById('ui_preset_import_button');
-    const exportButton = document.getElementById('ui_preset_export_button');
-    const deleteButton = document.getElementById('ui-preset-delete-button');
-    const updateButton = document.getElementById('ui-preset-update-button');
-    const saveButton = document.getElementById('ui-preset-save-button');
-    const importFileInput = document.getElementById('ui_preset_import_file');
-
-    attachMoonlitListener(themeSelector, 'change', handleMoonlitThemeChange);
-
-    if (importButton && importFileInput) {
-        attachMoonlitListener(importButton, 'click', handleMoonlitImportButtonClick);
-    }
-
-    attachMoonlitListener(exportButton, 'click', handleMoonlitExportButtonClick);
-    attachMoonlitListener(updateButton, 'click', handleMoonlitUpdateButtonClick);
-    attachMoonlitListener(saveButton, 'click', handleMoonlitSaveButtonClick);
-    attachMoonlitListener(deleteButton, 'click', handleMoonlitDeleteButtonClick);
-    attachMoonlitListener(importFileInput, 'change', handleMoonlitPresetFileImport);
-
-    addThemeButtonsHint();
-}
-
-function attachMoonlitListener(element, eventType, handler) {
-    if (!element || typeof element.addEventListener !== 'function') return;
-
-    if (!element[MOONLIT_LISTENER_KEY]) {
-        element[MOONLIT_LISTENER_KEY] = {};
-    }
-
-    const attachedHandlers = element[MOONLIT_LISTENER_KEY];
-    if (attachedHandlers[eventType] === handler) {
-        return;
-    }
-
-    if (attachedHandlers[eventType]) {
-        element.removeEventListener(eventType, attachedHandlers[eventType]);
-    }
-
-    element.addEventListener(eventType, handler);
-    attachedHandlers[eventType] = handler;
-}
-
-function getMoonlitSettings() {
-    const context = SillyTavern.getContext();
-    return getExtensionSettings(context) || {};
-}
-
-function isMoonlitPreset(presetName) {
-    if (!presetName) return false;
-    const settings = getMoonlitSettings();
-    const presets = settings.presets || {};
-    return Object.prototype.hasOwnProperty.call(presets, presetName);
-}
-
-function isMoonlitPresetSelected() {
-    const themeSelector = document.getElementById('themes');
-    if (!themeSelector) return false;
-    return isMoonlitPreset(themeSelector.value);
-}
-
-function handleMoonlitThemeChange(event) {
-    const themeSelector = event?.currentTarget ?? document.getElementById('themes');
-    if (!themeSelector) return;
-
-    const selectedTheme = themeSelector.value;
-    if (!isMoonlitPreset(selectedTheme)) {
-        return;
-    }
-
-    const settings = getMoonlitSettings();
-    if (settings.activePreset === selectedTheme) {
-        return;
-    }
-
-    try {
-        loadPreset(selectedTheme);
-    } catch (error) {
-        // Error handled silently
-    }
-}
-
-function handleMoonlitImportButtonClick() {
-    if (isMoonlitPresetSelected()) {
-        importPreset();
-    }
-}
-
-function handleMoonlitExportButtonClick() {
-    if (isMoonlitPresetSelected()) {
-        exportActivePreset();
-    }
-}
-
-function handleMoonlitUpdateButtonClick() {
-    if (isMoonlitPresetSelected()) {
-        updateCurrentPreset();
-    }
-}
-
-function handleMoonlitSaveButtonClick() {
-    if (isMoonlitPresetSelected()) {
-        saveAsNewPreset();
-    }
-}
-
-function handleMoonlitDeleteButtonClick() {
-    if (isMoonlitPresetSelected()) {
-        deleteCurrentPreset();
-    }
-}
-
-function handleMoonlitPresetFileImport(event) {
-    const file = event?.target?.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const jsonData = JSON.parse(e.target.result);
-            if (jsonData.moonlitEchoesPreset) {
-                handleMoonlitPresetImport(jsonData);
-            }
-        } catch (error) {
-            // Error handled silently
-        }
-    };
-    reader.readAsText(file);
 }
 
 /**
@@ -498,75 +348,6 @@ function addSlashCommandsTip(container) {
     container.appendChild(tipContainer);
 }
 
-/**
- * Add theme hint
- * Only show hint when theme is enabled
- */
-function addThemeButtonsHint() {
-    const themesContainer = document.getElementById('UI-presets-block');
-    if (!themesContainer) return;
-
-    // Get settings
-    const context = SillyTavern.getContext();
-    const settings = getExtensionSettings(context);
-
-    // Check if theme is enabled
-    if (!settings.enabled) {
-        // If theme is not enabled, remove any existing hint
-        const existingHint = document.getElementById('moonlit-theme-buttons-hint');
-        if (existingHint) existingHint.remove();
-        return;
-    }
-
-    // Check if hint already exists
-    if (document.getElementById('moonlit-theme-buttons-hint')) return;
-
-    const hintElement = document.createElement('small');
-    hintElement.id = 'moonlit-theme-buttons-hint';
-    hintElement.style.margin = '5px 0';
-    hintElement.style.padding = '5px 10px';
-    hintElement.style.display = 'block';
-    hintElement.style.lineHeight = '1.5';
-
-    // Show different hints based on initial theme selector value
-    const themeSelector = document.getElementById('themes');
-    let currentTheme = themeSelector ? themeSelector.value : '';
-
-    // Still keep checking for "- by Rivelle" to identify presets created by you
-    if (currentTheme.includes('- by Rivelle')) {
-        // Official Moonlit preset - keep original wording
-        hintElement.innerHTML = `<i class="fa-solid fa-info-circle"></i>  <b><span data-i18n="You are currently using the third-party extension theme">You are currently using the third-party extension theme</span> Moonlit Echoes Theme <a href="https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme" target="_blank">${THEME_VERSION}</a></b><br>
-        <small><span data-i18n="Thank you for choosing my theme! This extension is unofficial. For issues, please contact">Thank you for choosing my theme! This extension is unofficial. For issues, please contact</span> <a href="https://github.com/RivelleDays" target="_blank">Rivelle</a></small>`;
-        hintElement.style.borderLeft = '3px solid var(--customThemeColor)';
-    } else {
-        // Other themes - keep original wording
-        hintElement.innerHTML = `<i class="fa-solid fa-info-circle"></i>  <b><span data-i18n="You are currently using the third-party extension theme">You are currently using the third-party extension theme</span> Moonlit Echoes Theme <a href="https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme" target="_blank">${THEME_VERSION}</a></b><br>
-        <small><span data-i18n="customThemeIssue">This unofficial extension may not work with all custom themes. Please troubleshoot first; if confirmed, contact</span> <a href="https://github.com/RivelleDays" target="_blank">Rivelle</a></small>`;
-        hintElement.style.borderLeft = '3px solid var(--SmartThemeBodyColor)';
-    }
-
-    themesContainer.appendChild(hintElement);
-
-    if (themeSelector) {
-        themeSelector.addEventListener('change', () => {
-            // Only update hint when theme is enabled
-            if (settings.enabled) {
-                const currentTheme = themeSelector.value;
-                if (currentTheme.includes('- by Rivelle')) {
-                    // Official Moonlit preset
-                    hintElement.innerHTML = `<i class="fa-solid fa-info-circle"></i>  <b><span data-i18n="You are currently using the third-party extension theme">You are currently using the third-party extension theme</span> Moonlit Echoes Theme <a href="https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme" target="_blank">${THEME_VERSION}</a></b><br>
-                    <small><span data-i18n="Thank you for choosing my theme! This extension is unofficial. For issues, please contact">Thank you for choosing my theme! This extension is unofficial. For issues, please contact</span> <a href="https://github.com/RivelleDays" target="_blank">Rivelle</a></small>`;
-                    hintElement.style.borderLeft = '3px solid var(--customThemeColor)';
-                } else {
-                    // Other themes
-                    hintElement.innerHTML = `<i class="fa-solid fa-info-circle"></i>  <b><span data-i18n="You are currently using the third-party extension theme">You are currently using the third-party extension theme</span> Moonlit Echoes Theme <a href="https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme" target="_blank">${THEME_VERSION}</a></b><br>
-                    <small><span data-i18n="customThemeIssue">This unofficial extension may not work with all custom themes. Please troubleshoot first; if confirmed, contact</span> <a href="https://github.com/RivelleDays" target="_blank">Rivelle</a></small>`;
-                    hintElement.style.borderLeft = '3px solid var(--SmartThemeBodyColor)';
-                }
-            }
-        });
-    }
-}
 
 /**
 * Handle Moonlit Echoes preset import
@@ -724,7 +505,7 @@ if (typeof import.meta !== 'undefined' && import.meta.url) {
         baseUrl = currentScript.src.substring(0, currentScript.src.lastIndexOf('/'));
     } else {
         // If above methods fail, use hardcoded path
-        baseUrl = `${window.location.origin}/scripts/extensions/third-party/${extensionName}`;
+        baseUrl = `${window.location.origin}/scripts/extensions/third-party/${EXTENSION_ID}`;
     }
 }
 
@@ -2054,7 +1835,7 @@ function createCheckbox(container, setting, settings) {
 
         try {
             // Build full path for CSS file
-            const cssFilePath = `${extensionFolderPath}/css/${cssFile}`;
+            const cssFilePath = `${EXTENSION_FOLDER_PATH}/css/${cssFile}`;
 
             // Get CSS content
             const response = await fetch(cssFilePath);
