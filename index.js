@@ -15,6 +15,7 @@ import { loadMovingUIState } from '../../../power-user.js';
 import { t } from '../../../i18n.js';
 import { tabMappings, themeCustomSettings } from './src/config/theme-settings.js';
 import { settingsKey, getSettings as getExtensionSettings, saveSettings as saveExtensionSettings } from './src/services/settings-service.js';
+import { initializeSlashCommands } from './src/services/slash-commands.js';
 import { initExtension } from './src/bootstrap/init-extension.js';
 import './src/bootstrap/lifecycle-hooks.js';
 import { initControls, toggleSettingsPopout } from './src/ui/controls.js';
@@ -47,140 +48,6 @@ export function applyAllThemeSettings(contextOverride) {
     return applyAllThemeSettingsCore(settingsKey, themeCustomSettings, contextOverride);
 }
 
-/**
- * Initialize slash commands - only when theme is enabled
- * Register various chat style slash commands for Moonlit Echoes Theme
- */
-function initializeSlashCommands() {
-    // Get SillyTavern context and check if theme is enabled
-    const context = SillyTavern.getContext();
-    const settings = getExtensionSettings(context);
-
-    // Only initialize slash commands when theme is enabled
-    if (!settings.enabled) {
-        return;
-    }
-
-    const SlashCommandParser = context.SlashCommandParser;
-    const SlashCommand = context.SlashCommand;
-
-    // Common function to switch chat styles
-    function switchChatStyle(styleName, styleValue) {
-        try {
-            // Get the chat style selector
-            const chatDisplaySelect = document.getElementById("chat_display");
-            if (!chatDisplaySelect) {
-                return `Chat display selector not found.`;
-            }
-
-            // Set the selector value
-            chatDisplaySelect.value = styleValue;
-
-            // Remove all style classes
-            document.body.classList.remove(
-                "flatchat",
-                "bubblechat",
-                "documentstyle",
-                "echostyle",
-                "whisperstyle",
-                "hushstyle",
-                "ripplestyle",
-                "tidestyle"
-            );
-
-            // Add the new style class
-            document.body.classList.add(styleName);
-
-            // Save to localStorage
-            localStorage.setItem("savedChatStyle", styleValue);
-
-            return t`Chat style switched to ${styleName}`;
-        } catch (error) {
-            return t`Error switching chat style: ${error.message}`;
-        }
-    }
-
-    // Register Echo style command
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'echostyle',
-        description: t`Switch to Echo chat style`,
-        callback: (args) => {
-            return switchChatStyle("echostyle", "3");
-        },
-        helpString: t`Switch to Echo chat style by Moonlit Echoes Theme`,
-    }));
-
-    // Register Whisper style command
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'whisperstyle',
-        description: t`Switch to Whisper chat style`,
-        callback: (args) => {
-            return switchChatStyle("whisperstyle", "4");
-        },
-        helpString: t`Switch to Whisper chat style by Moonlit Echoes Theme`,
-    }));
-
-    // Register Hush style command
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'hushstyle',
-        description: t`Switch to Hush chat style`,
-        callback: (args) => {
-            return switchChatStyle("hushstyle", "5");
-        },
-        helpString: t`Switch to Hush chat style by Moonlit Echoes Theme`,
-    }));
-
-    // Register Ripple style command
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'ripplestyle',
-        description: t`Switch to Ripple chat style`,
-        callback: (args) => {
-            return switchChatStyle("ripplestyle", "6");
-        },
-        helpString: t`Switch to Ripple chat style by Moonlit Echoes Theme`,
-    }));
-
-    // Register Tide style command
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'tidestyle',
-        description: t`Switch to Tide chat style`,
-        callback: (args) => {
-            return switchChatStyle("tidestyle", "7");
-        },
-        helpString: t`Switch to Tide chat style by Moonlit Echoes Theme`,
-    }));
-
-    // Register SillyTavern default styles with moonlit- prefix
-    // Bubble chat style
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'moonlit-bubble',
-        description: t`Switch to Bubble chat style`,
-        callback: (args) => {
-            return switchChatStyle("bubblechat", "1");
-        },
-        helpString: t`Switch to Bubble chat style by Moonlit Echoes Theme`,
-    }));
-
-    // Flat chat style
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'moonlit-flat',
-        description: t`Switch to Flat chat style`,
-        callback: (args) => {
-            return switchChatStyle("flatchat", "0");
-        },
-        helpString: t`Switch to Flat chat style by Moonlit Echoes Theme`,
-    }));
-
-    // Document style
-    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
-        name: 'moonlit-document',
-        description: t`Switch to Document chat style`,
-        callback: (args) => {
-            return switchChatStyle("documentstyle", "2");
-        },
-        helpString: t`Switch to Document chat style by Moonlit Echoes Theme`,
-    }));
-}
 
 /**
  * Initialize UI elements and events for the extension
