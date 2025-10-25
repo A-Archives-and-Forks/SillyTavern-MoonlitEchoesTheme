@@ -8,7 +8,7 @@ const EXTENSION_NAME = 'Moonlit Echoes Theme';
 const settingsKey = 'SillyTavernMoonlitEchoesTheme';
 const extensionName = "SillyTavern-MoonlitEchoesTheme";
 const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
-const THEME_VERSION = "2.9.4";
+const THEME_VERSION = "2.3.0";
 
 // Import required functions for drag functionality
 import { dragElement } from '../../../RossAscends-mods.js';
@@ -33,9 +33,13 @@ import {
     syncMoonlitPresetsWithThemeList,
 } from './src/ui/preset-manager.js';
 import { configureSettingsTabs, createTabbedSettingsUI } from './src/ui/settings-tabs.js';
+import { applyAllThemeSettings as applyAllThemeSettingsCore } from './src/core/theme-applier.js';
+import { initAvatarInjector, initFormSheldHeightMonitor } from './src/core/observers.js';
+import { rgbaToHex, getAlphaFromRgba } from './src/utils/color.js';
 
 // Track if custom chat styles have been added
 let customChatStylesAdded = false;
+const MOONLIT_LISTENER_KEY = '__moonlitEchoesListeners';
 
 /**
  * Generate default settings
@@ -61,6 +65,10 @@ function generateDefaultSettings() {
 
 // Generate default settings
 const defaultSettings = generateDefaultSettings();
+
+function applyAllThemeSettings(contextOverride) {
+    return applyAllThemeSettingsCore(settingsKey, themeCustomSettings, contextOverride);
+}
 
 /**
  * Main extension initialization function
@@ -390,13 +398,11 @@ function addExtensionMenuButton() {
  * Listen to UI theme selector changes and switch presets automatically
  */
 function integrateWithThemeSelector() {
-    // Get theme selector
     const themeSelector = document.getElementById('themes');
     if (!themeSelector) {
         return;
     }
 
-    // Get theme-related buttons
     const importButton = document.getElementById('ui_preset_import_button');
     const exportButton = document.getElementById('ui_preset_export_button');
     const deleteButton = document.getElementById('ui-preset-delete-button');
@@ -404,109 +410,126 @@ function integrateWithThemeSelector() {
     const saveButton = document.getElementById('ui-preset-save-button');
     const importFileInput = document.getElementById('ui_preset_import_file');
 
-    // Listen to theme change events
-    themeSelector.addEventListener('change', () => {
-        // Get selected theme name
-        const selectedTheme = themeSelector.value;
+    attachMoonlitListener(themeSelector, 'change', handleMoonlitThemeChange);
 
-        // Check if it's one of our presets
-        const context = SillyTavern.getContext();
-        const settings = context.extensionSettings[settingsKey];
-
-        // Check if selected theme exists in our presets
-        if (settings.presets && Object.keys(settings.presets).includes(selectedTheme)) {
-            // Use the selected theme name directly as preset name
-            try {
-                loadPreset(selectedTheme);
-            } catch (error) {
-                // Error handled silently
-            }
-        }
-    });
-
-    // Check if currently selected theme is one of our presets
-    function isOurPreset() {
-        const context = SillyTavern.getContext();
-        const settings = context.extensionSettings[settingsKey];
-        return settings.presets && Object.keys(settings.presets).includes(themeSelector.value);
-    }
-
-    // Listen to import button
     if (importButton && importFileInput) {
-        importButton.addEventListener('click', () => {
-            // Use more reliable check method
-            if (isOurPreset()) {
-                importPreset();
-            }
-        });
+        attachMoonlitListener(importButton, 'click', handleMoonlitImportButtonClick);
     }
 
-    // Listen to export button
-    if (exportButton) {
-        exportButton.addEventListener('click', () => {
-            // Use more reliable check method
-            if (isOurPreset()) {
-                exportActivePreset();
-            }
-        });
-    }
-
-    // Listen to update button
-    if (updateButton) {
-        updateButton.addEventListener('click', () => {
-            // Use more reliable check method
-            if (isOurPreset()) {
-                updateCurrentPreset();
-            }
-        });
-    }
-
-    // Listen to save button
-    if (saveButton) {
-        saveButton.addEventListener('click', () => {
-            // Use more reliable check method
-            if (isOurPreset()) {
-                saveAsNewPreset();
-            }
-        });
-    }
-
-    // Listen to delete button
-    if (deleteButton) {
-        deleteButton.addEventListener('click', () => {
-            // Use more reliable check method
-            if (isOurPreset()) {
-                deleteCurrentPreset();
-            }
-        });
-    }
-
-    // Handle file import
-    if (importFileInput) {
-        importFileInput.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const jsonData = JSON.parse(e.target.result);
-
-                        // Check if it's Moonlit Echoes format
-                        if (jsonData.moonlitEchoesPreset) {
-                            // Handle Moonlit Echoes preset
-                            handleMoonlitPresetImport(jsonData);
-                            return; // Processed, don't continue
-                        }
-                    } catch (error) {
-                        // Error handled silently
-                    }
-                };
-                reader.readAsText(file);
-            }
-        });
-    }
+    attachMoonlitListener(exportButton, 'click', handleMoonlitExportButtonClick);
+    attachMoonlitListener(updateButton, 'click', handleMoonlitUpdateButtonClick);
+    attachMoonlitListener(saveButton, 'click', handleMoonlitSaveButtonClick);
+    attachMoonlitListener(deleteButton, 'click', handleMoonlitDeleteButtonClick);
+    attachMoonlitListener(importFileInput, 'change', handleMoonlitPresetFileImport);
 
     addThemeButtonsHint();
+}
+
+function attachMoonlitListener(element, eventType, handler) {
+    if (!element || typeof element.addEventListener !== 'function') return;
+
+    if (!element[MOONLIT_LISTENER_KEY]) {
+        element[MOONLIT_LISTENER_KEY] = {};
+    }
+
+    const attachedHandlers = element[MOONLIT_LISTENER_KEY];
+    if (attachedHandlers[eventType] === handler) {
+        return;
+    }
+
+    if (attachedHandlers[eventType]) {
+        element.removeEventListener(eventType, attachedHandlers[eventType]);
+    }
+
+    element.addEventListener(eventType, handler);
+    attachedHandlers[eventType] = handler;
+}
+
+function getMoonlitSettings() {
+    const context = SillyTavern.getContext();
+    return context.extensionSettings[settingsKey] || {};
+}
+
+function isMoonlitPreset(presetName) {
+    if (!presetName) return false;
+    const settings = getMoonlitSettings();
+    const presets = settings.presets || {};
+    return Object.prototype.hasOwnProperty.call(presets, presetName);
+}
+
+function isMoonlitPresetSelected() {
+    const themeSelector = document.getElementById('themes');
+    if (!themeSelector) return false;
+    return isMoonlitPreset(themeSelector.value);
+}
+
+function handleMoonlitThemeChange(event) {
+    const themeSelector = event?.currentTarget ?? document.getElementById('themes');
+    if (!themeSelector) return;
+
+    const selectedTheme = themeSelector.value;
+    if (!isMoonlitPreset(selectedTheme)) {
+        return;
+    }
+
+    const settings = getMoonlitSettings();
+    if (settings.activePreset === selectedTheme) {
+        return;
+    }
+
+    try {
+        loadPreset(selectedTheme);
+    } catch (error) {
+        // Error handled silently
+    }
+}
+
+function handleMoonlitImportButtonClick() {
+    if (isMoonlitPresetSelected()) {
+        importPreset();
+    }
+}
+
+function handleMoonlitExportButtonClick() {
+    if (isMoonlitPresetSelected()) {
+        exportActivePreset();
+    }
+}
+
+function handleMoonlitUpdateButtonClick() {
+    if (isMoonlitPresetSelected()) {
+        updateCurrentPreset();
+    }
+}
+
+function handleMoonlitSaveButtonClick() {
+    if (isMoonlitPresetSelected()) {
+        saveAsNewPreset();
+    }
+}
+
+function handleMoonlitDeleteButtonClick() {
+    if (isMoonlitPresetSelected()) {
+        deleteCurrentPreset();
+    }
+}
+
+function handleMoonlitPresetFileImport(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const jsonData = JSON.parse(e.target.result);
+            if (jsonData.moonlitEchoesPreset) {
+                handleMoonlitPresetImport(jsonData);
+            }
+        } catch (error) {
+            // Error handled silently
+        }
+    };
+    reader.readAsText(file);
 }
 
 /**
@@ -2421,109 +2444,6 @@ function initChatDisplaySwitcher() {
 
 
 /**
-* Initialize avatar injector
-* Inject avatar URL into message elements as CSS variables
-*/
-function initAvatarInjector() {
-    // Update avatars for all messages
-    function updateAvatars() {
-        document.querySelectorAll('.mes').forEach(mes => {
-            // Skip already processed elements
-            if (mes.dataset.avatar) return;
-
-            // Find avatar image
-            const avatarImg = mes.querySelector('.avatar img');
-            if (!avatarImg) {
-                return;
-            }
-
-            // Get image source
-            let src = avatarImg.src || avatarImg.getAttribute('data-src');
-            if (!src) return;
-
-            // Convert absolute URL to relative path
-            if (src.startsWith(window.location.origin)) {
-                src = src.replace(window.location.origin, '');
-            }
-
-            // Add load event
-            avatarImg.addEventListener('load', () => {
-                let loadedSrc = avatarImg.src;
-                if (loadedSrc.startsWith(window.location.origin)) {
-                    loadedSrc = loadedSrc.replace(window.location.origin, '');
-                }
-                mes.dataset.avatar = loadedSrc;
-                mes.style.setProperty('--mes-avatar-url', `url('${mes.dataset.avatar}')`);
-            }, { once: true });
-
-            // If image is already loaded, update immediately
-            if (avatarImg.complete && src && !src.endsWith("/")) {
-                mes.dataset.avatar = src;
-                mes.style.setProperty('--mes-avatar-url', `url('${mes.dataset.avatar}')`);
-            }
-        });
-    }
-
-    // Initial execution
-    updateAvatars();
-
-    // Use debounced MutationObserver callback
-    let debounceTimer;
-    const observerCallback = () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            updateAvatars();
-        }, 100);
-    };
-
-    // Observe changes to chat container
-    const chatContainer = document.getElementById('chat');
-    if (chatContainer) {
-        const observer = new MutationObserver(observerCallback);
-        observer.observe(chatContainer, { childList: true, subtree: true });
-    }
-
-    // Expose update function
-    window.updateAvatars = updateAvatars;
-}
-
-/**
-* Apply all theme settings
-* Apply all CSS variables from settings
-*/
-function applyAllThemeSettings() {
-    const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
-
-    // Ensure dedicated style element
-    let themeStyleElement = document.getElementById('dynamic-theme-styles');
-    if (!themeStyleElement) {
-        themeStyleElement = document.createElement('style');
-        themeStyleElement.id = 'dynamic-theme-styles';
-        document.head.appendChild(themeStyleElement);
-    }
-
-    // Build CSS variable definitions
-    let cssVars = ':root {\n';
-
-    // Process all settings
-    themeCustomSettings.forEach(setting => {
-        const { varId } = setting;
-        const value = settings[varId];
-
-        if (value !== undefined) {
-            cssVars += `  --${varId}: ${value} !important;\n`;
-        }
-    });
-
-    cssVars += '}';
-
-    // Apply CSS variables
-    themeStyleElement.textContent = cssVars;
-}
-
-
-/**
 * Apply single theme setting
 * @param {string} varId - CSS variable ID
 * @param {string} value - Setting value
@@ -2562,170 +2482,7 @@ document.addEventListener('themeSettingChanged', (ev) => {
  * @param {string} rgba - RGBA color string
  * @returns {string|null} HEX color string or null
  */
-function rgbaToHex(rgba) {
-    // Check empty value
-    if (!rgba) {
-        return null;
-    }
 
-    // Check if it's CSS variable format
-    if (rgba.startsWith('var(--')) {
-        return null;
-    }
-
-    // If already in HEX format, return directly
-    if (rgba.startsWith('#')) {
-        return rgba;
-    }
-
-    // Try to match RGBA/RGB format
-    const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d\.]+))?\)/);
-    if (!match) return null;
-
-    const r = parseInt(match[1]);
-    const g = parseInt(match[2]);
-    const b = parseInt(match[3]);
-
-    // Ensure values are in valid range
-    if (isNaN(r) || isNaN(g) || isNaN(b) || r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
-        return null;
-    }
-
-    // Convert to HEX format
-    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-}
-
-/**
- * Get opacity value from RGBA string - enhanced version
- * @param {string} rgba - RGBA color string
- * @returns {number} Opacity value, default is 1
- */
-function getAlphaFromRgba(rgba) {
-    // Check empty value
-    if (!rgba) {
-        return 1;
-    }
-
-    // Check if it's CSS variable format
-    if (rgba.startsWith('var(--')) {
-        return 1;
-    }
-
-    // If in HEX format
-    if (rgba.startsWith('#')) {
-        return 1;
-    }
-
-    // Try to match RGBA format
-    const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d\.]+))?\)/);
-    if (!match) return 1;
-
-    // Return opacity or default value
-    return match[4] ? Math.min(Math.max(parseFloat(match[4]), 0), 1) : 1; // Ensure value is in 0-1 range
-}
-
-/**
- * Helper function supporting conversion of hexadecimal color to RGBA
- * @param {string} hex - HEX color code (e.g. "#FF0000")
- * @param {number} alpha - Opacity value (0-1)
- * @returns {string} RGBA format color string
- */
-function hexToRgba(hex, alpha = 1) {
-    if (!hex) return 'rgba(0, 0, 0, 1)';
-
-    // Try to handle various formats
-    try {
-        // Remove hash (if exists)
-        hex = hex.replace('#', '');
-
-        // Handle abbreviated form (e.g. #F00)
-        if (hex.length === 3) {
-            hex = hex.split('').map(char => char + char).join('');
-        }
-
-        // Ensure valid HEX format
-        if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
-            return 'rgba(0, 0, 0, 1)';
-        }
-
-        // Get RGB values
-        const r = parseInt(hex.substring(0, 2), 16);
-        const g = parseInt(hex.substring(2, 4), 16);
-        const b = parseInt(hex.substring(4, 6), 16);
-
-        // Ensure alpha is in valid range
-        const validAlpha = Math.min(Math.max(alpha, 0), 1);
-
-        // Return RGBA format
-        return `rgba(${r}, ${g}, ${b}, ${validAlpha})`;
-    } catch (e) {
-        return 'rgba(0, 0, 0, 1)';
-    }
-}
-
-/**
- * Try to convert any color format to valid color value
- * Support HEX, RGB, RGBA formats
- * @param {string} color - Input color string
- * @returns {Object} Object with hex and rgba properties, or null if invalid
- */
-function parseColorValue(color) {
-    if (!color) return null;
-
-    // Standardize spaces
-    color = color.trim();
-
-    // Check HEX format
-    if (color.startsWith('#')) {
-        const hex = color;
-        const alpha = 1;
-        return {
-            hex: hex,
-            rgba: hexToRgba(hex, alpha),
-            alpha: alpha
-        };
-    }
-
-    // Check RGB/RGBA format
-    const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d\.]+))?\)/);
-    if (rgbaMatch) {
-        const r = parseInt(rgbaMatch[1]);
-        const g = parseInt(rgbaMatch[2]);
-        const b = parseInt(rgbaMatch[3]);
-        const alpha = rgbaMatch[4] ? parseFloat(rgbaMatch[4]) : 1;
-
-        const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-        const rgba = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-
-        return {
-            hex: hex,
-            rgba: rgba,
-            alpha: alpha
-        };
-    }
-
-    // If nothing matches, return null
-    return null;
-}
-
-/**
-* Get RGB part from RGBA string
-* @param {string} rgba - RGBA color string
-* @returns {string} RGB part string
-*/
-function getRgbPartFromRgba(rgba) {
-    // Check if it's CSS variable format
-    if (!rgba || rgba.startsWith('var(--')) {
-        return '0, 0, 0';
-    }
-
-    // Try to match RGBA format
-    const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d\.]+))?\)/);
-    if (!match) return '0, 0, 0';
-
-    // Return RGB part
-    return `${match[1]}, ${match[2]}, ${match[3]}`;
-}
 
 /**
 * Dynamically add a new custom setting
@@ -3015,245 +2772,4 @@ document.addEventListener('colorChanged', function(event) {
     updateColorSliderThumb(varId, hexColor);
 });
 
-/**
- * Form Shield Height Monitor
- * Accurately tracks the height of #form_sheld and makes it available as a CSS variable
- */
-
-// Initialize form shield height monitor
-function initFormSheldHeightMonitor() {
-    // Track if we've initialized
-    let isInitialized = false;
-
-    // Helper function to get the exact height including all box model properties
-    function getAccurateHeight(element) {
-        if (!element) return 0;
-
-        // Use getBoundingClientRect for most accurate height
-        const rect = element.getBoundingClientRect();
-        return rect.height;
-    }
-
-    // Update the CSS variable with current height
-    function updateFormSheldHeight() {
-        // Target the form_sheld element specifically
-        const formSheld = document.getElementById('form_sheld');
-
-        if (formSheld) {
-            // Get accurate height
-            const height = getAccurateHeight(formSheld);
-
-            // Only update if we have a valid height
-            if (height > 0) {
-                document.documentElement.style.setProperty('--formSheldHeight', `${height}px`);
-                isInitialized = true;
-            }
-        }
-    }
-
-    // Create MutationObserver to detect layout and content changes
-    const mutationObserver = new MutationObserver((mutations) => {
-        let shouldUpdate = false;
-
-        // Check if any mutations affect the form shield
-        for (const mutation of mutations) {
-            // If target is form_sheld or any of its children
-            if (mutation.target.id === 'form_sheld' ||
-                mutation.target.closest('#form_sheld')) {
-                shouldUpdate = true;
-                break;
-            }
-
-            // Check added nodes
-            if (mutation.addedNodes.length) {
-                for (const node of mutation.addedNodes) {
-                    if (node.id === 'form_sheld' ||
-                        (node.nodeType === 1 && node.querySelector('#form_sheld'))) {
-                        shouldUpdate = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (shouldUpdate) {
-            // Use setTimeout to ensure DOM is updated before measuring
-            setTimeout(updateFormSheldHeight, 0);
-        }
-    });
-
-    // Create ResizeObserver for more accurate size tracking
-    const resizeObserver = new ResizeObserver(entries => {
-        for (const entry of entries) {
-            // Only process form_sheld
-            if (entry.target.id === 'form_sheld') {
-                // Get height from ResizeObserver entry
-                const height = entry.contentRect.height;
-
-                // Update CSS variable if height is valid
-                if (height > 0) {
-                    document.documentElement.style.setProperty('--formSheldHeight', `${height}px`);
-                    isInitialized = true;
-                }
-            }
-        }
-    });
-
-    // Function to start all observers
-    function startObservers() {
-        // Stop existing observers first
-        stopObservers();
-
-        // Get the form_sheld element
-        const formSheld = document.getElementById('form_sheld');
-
-        if (formSheld) {
-            // Start resize observer
-            resizeObserver.observe(formSheld);
-
-            // Start mutation observer for form_sheld and its children
-            mutationObserver.observe(formSheld, {
-                childList: true,
-                subtree: true,
-                attributes: true,
-                characterData: true
-            });
-
-            // Also observe form_sheld's parent to detect style changes
-            const parent = formSheld.parentElement;
-            if (parent) {
-                mutationObserver.observe(parent, {
-                    attributes: true,
-                    attributeFilter: ['style', 'class']
-                });
-            }
-
-            // Do initial height update
-            updateFormSheldHeight();
-        }
-    }
-
-    // Function to stop all observers
-    function stopObservers() {
-        resizeObserver.disconnect();
-        mutationObserver.disconnect();
-    }
-
-    // Watch for DOM changes to find form_sheld if it's added later
-    const bodyObserver = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            // Check if form_sheld was added
-            if (mutation.addedNodes.length) {
-                for (const node of mutation.addedNodes) {
-                    if (node.id === 'form_sheld' ||
-                        (node.nodeType === 1 && node.querySelector('#form_sheld'))) {
-                        // Wait for it to be fully rendered
-                        setTimeout(startObservers, 50);
-                        return;
-                    }
-                }
-            }
-        }
-
-        // Always check if form_sheld exists but isn't being observed
-        const formSheld = document.getElementById('form_sheld');
-        if (formSheld && !isInitialized) {
-            setTimeout(startObservers, 50);
-        }
-    });
-
-    // Observe the entire document for changes
-    bodyObserver.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-
-    // Monitor textarea changes as they often affect form_sheld height
-    function setupTextAreaListener() {
-        const textArea = document.getElementById('send_textarea');
-        if (textArea) {
-            // Remove existing listeners to avoid duplicates
-            textArea.removeEventListener('input', onTextAreaInput);
-            // Add input listener
-            textArea.addEventListener('input', onTextAreaInput);
-        }
-    }
-
-    // Handle textarea input
-    function onTextAreaInput() {
-        // Update multiple times to catch all changes
-        updateFormSheldHeight();
-        setTimeout(updateFormSheldHeight, 10);
-        setTimeout(updateFormSheldHeight, 100);
-    }
-
-    // Monitor window and document events
-    window.addEventListener('resize', updateFormSheldHeight);
-    window.addEventListener('orientationchange', () => {
-        // Update multiple times after orientation change
-        updateFormSheldHeight();
-        setTimeout(updateFormSheldHeight, 100);
-        setTimeout(updateFormSheldHeight, 500);
-    });
-
-    // Setup listeners when DOM content changes
-    document.addEventListener('DOMContentLoaded', () => {
-        startObservers();
-        setupTextAreaListener();
-
-        // Initial update with multiple attempts
-        updateFormSheldHeight();
-        setTimeout(updateFormSheldHeight, 100);
-        setTimeout(updateFormSheldHeight, 500);
-        setTimeout(updateFormSheldHeight, 1000);
-    });
-
-    // Also run on full load
-    window.addEventListener('load', () => {
-        startObservers();
-        setupTextAreaListener();
-        updateFormSheldHeight();
-        setTimeout(updateFormSheldHeight, 500);
-    });
-
-    // Check for changes when user toggles menus or QR bar
-    function setupUIListeners() {
-        // Listen for QR bar changes
-        document.querySelectorAll('#qr--bar .qr--option').forEach(button => {
-            button.addEventListener('click', () => {
-                setTimeout(updateFormSheldHeight, 10);
-                setTimeout(updateFormSheldHeight, 100);
-            });
-        });
-
-        // Listen for options menu toggle
-        const optionsButton = document.getElementById('options_button');
-        if (optionsButton) {
-            optionsButton.addEventListener('click', () => {
-                setTimeout(updateFormSheldHeight, 10);
-                setTimeout(updateFormSheldHeight, 100);
-            });
-        }
-    }
-
-    // Setup UI listeners after a delay
-    setTimeout(setupUIListeners, 1000);
-
-    // Expose the update function globally
-    window.updateFormSheldHeight = updateFormSheldHeight;
-
-    // Do initial setup
-    startObservers();
-    setupTextAreaListener();
-    updateFormSheldHeight();
-
-    // Return control functions for advanced usage
-    return {
-        update: updateFormSheldHeight,
-        start: startObservers,
-        stop: stopObservers
-    };
-}
-
-// Initialize immediately and store controller
 window.formSheldHeightController = initFormSheldHeightMonitor();
