@@ -2919,6 +2919,14 @@ span.select2.select2-container {
     }
 }
 
+#bg_menu_content, #bg_custom_content {
+    gap: 8px;
+    padding: 8px;
+}
+#bg-scrollable-content {
+    padding: 8px;
+}
+
 
 
 /* EXTENSIONS 擴充功能
