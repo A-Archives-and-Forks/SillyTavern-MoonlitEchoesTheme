@@ -56,12 +56,6 @@ body {
     }
 }
 
-@media screen and (max-width: 1000px) {
-    .bg_example.flex-container {
-        width: calc(50% - 20px);
-    }
-}
-
 /* Alert Red 紅色警告 */
 .redOverlayGlow {
     color: var(--fullred);
@@ -2922,10 +2916,6 @@ span.select2.select2-container {
 
     &.locked {
         outline: 1.25px solid var(--customThemeColor);
-    }
-
-    @media screen and (max-width: 1000px) {
-        flex: 1 1 calc(45%);
     }
 }
 

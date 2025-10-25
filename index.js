@@ -16,6 +16,23 @@ import { loadMovingUIState } from '../../../power-user.js';
 import { t } from '../../../i18n.js';
 import { tabMappings, themeCustomSettings } from './src/config/theme-settings.js';
 import { initControls, toggleSettingsPopout } from './src/ui/controls.js';
+import {
+    configurePresetManager,
+    createPresetManagerUI,
+    initPresetManager,
+    importPreset,
+    exportActivePreset,
+    updateCurrentPreset,
+    saveAsNewPreset,
+    deleteCurrentPreset,
+    loadPreset,
+    applyActivePreset,
+    applyPresetToSettings,
+    updatePresetSelector,
+    handleMoonlitPresetImport,
+    syncMoonlitPresetsWithThemeList,
+} from './src/ui/preset-manager.js';
+import { configureSettingsTabs, createTabbedSettingsUI } from './src/ui/settings-tabs.js';
 
 // Track if custom chat styles have been added
 let customChatStylesAdded = false;
@@ -271,6 +288,27 @@ function initializeSlashCommands() {
  * Includes settings panel, chat style, color picker, and sidebar button
  */
 function initExtensionUI() {
+    configurePresetManager({
+        settingsKey,
+        themeVersion: THEME_VERSION,
+        t,
+        themeCustomSettings,
+        applyThemeSetting,
+        applyAllThemeSettings,
+        updateSettingsUI,
+        updateColorPickerUI,
+        updateSelectUI,
+        updateThemeSelector,
+    });
+
+    configureSettingsTabs({
+        t,
+        tabMappings,
+        themeCustomSettings,
+        createSettingItem,
+        addModernCompactStyles,
+    });
+
     loadSettingsHTML().then(() => {
         renderExtensionSettings();
         initChatDisplaySwitcher();
@@ -753,56 +791,6 @@ function addThemeButtonsHint() {
 * Handle Moonlit Echoes preset import
 * @param {Object} jsonData - Imported JSON data
 */
-function handleMoonlitPresetImport(jsonData) {
-    if (!jsonData.moonlitEchoesPreset || !jsonData.presetName || !jsonData.settings) {
-        toastr.error('Invalid Moonlit Echoes preset format');
-        return;
-    }
-
-    try {
-        // Get SillyTavern context
-        const context = SillyTavern.getContext();
-        const settings = context.extensionSettings[settingsKey];
-
-        // Get preset name and handle possible prefix
-        let presetName = jsonData.presetName;
-
-        // If preset name starts with "[Moonlit] ", remove this prefix
-        if (presetName.startsWith("[Moonlit] ")) {
-            presetName = presetName.substring("[Moonlit] ".length);
-        }
-
-        // If preset name is empty (extremely rare case), use default name
-        if (!presetName.trim()) {
-            presetName = "Imported Preset";
-        }
-
-        // Create new preset
-        settings.presets[presetName] = jsonData.settings;
-
-        // Set as active preset
-        settings.activePreset = presetName;
-
-        // Apply preset settings to current settings
-        applyPresetToSettings(presetName);
-
-        // Update preset selector
-        updatePresetSelector();
-
-        // Selectively update theme selector (only if option already exists)
-        updateThemeSelector(presetName);
-
-        // Save settings
-        context.saveSettingsDebounced();
-
-        // Show success message
-        toastr.success(t`Preset "${presetName}" imported successfully`);
-    } catch (error) {
-        toastr.error(t`Error importing preset: ${error.message}`);
-    }
-}
-
-
 /**
 * Update theme selector
 * @param {string} presetName - Preset name
@@ -1095,89 +1083,6 @@ function removeCustomChatStyles() {
  * @param {HTMLElement} container - Container to add tabbed settings
  * @param {Object} settings - Current settings object
  */
-function createTabbedSettingsUI(container, settings) {
-    // Main tabs container
-    const tabsContainer = document.createElement('div');
-    tabsContainer.classList.add('moonlit-tabs');
-
-    // Tab buttons container
-    const tabButtons = document.createElement('div');
-    tabButtons.classList.add('moonlit-tab-buttons');
-
-    // Tab contents container
-    const tabContents = document.createElement('div');
-    tabContents.classList.add('moonlit-tab-contents');
-
-    // Define the tabs - Updated first tab name
-    const tabs = [
-        { id: 'core-settings', label: t`Core Settings` },
-        { id: 'chat-interface', label: t`Chat Interface` },
-        { id: 'mobile-devices', label: t`Mobile Devices` },
-    ];
-
-    // Get active tab from localStorage
-    const activeTabId = getActiveTab();
-
-    // Create tab buttons and content sections
-    tabs.forEach((tab, index) => {
-        // Create tab button
-        const button = document.createElement('button');
-        button.id = `moonlit-tab-btn-${tab.id}`;
-        button.classList.add('moonlit-tab-button');
-        button.textContent = tab.label;
-
-        // Set active tab based on localStorage or default to first
-        if (tab.id === activeTabId) {
-            button.classList.add('active');
-        }
-
-        // Create tab content
-        const content = document.createElement('div');
-        content.id = `moonlit-tab-content-${tab.id}`;
-        content.classList.add('moonlit-tab-content');
-
-        // Set active content based on localStorage or default to first
-        if (tab.id === activeTabId) {
-            content.classList.add('active');
-        }
-
-        // Add click event for tab button
-        button.addEventListener('click', () => {
-            // Remove active class from all buttons and contents
-            document.querySelectorAll('.moonlit-tab-button').forEach(btn =>
-                btn.classList.remove('active')
-            );
-            document.querySelectorAll('.moonlit-tab-content').forEach(content =>
-                content.classList.remove('active')
-            );
-
-            // Add active class to clicked button and corresponding content
-            button.classList.add('active');
-            content.classList.add('active');
-
-            // Save active tab to localStorage
-            saveActiveTab(tab.id);
-        });
-
-        // Add button and content to containers
-        tabButtons.appendChild(button);
-        tabContents.appendChild(content);
-    });
-
-    // Add tab components to main container
-    tabsContainer.appendChild(tabButtons);
-    tabsContainer.appendChild(tabContents);
-    container.appendChild(tabsContainer);
-
-    // Add the settings to each tab with enhanced features
-    enhancedPopulateTabContent(tabs, tabContents, settings);
-
-    // Add tab styles
-    addTabStyles();
-
-    // Add collapsible section styles
-    addCollapsibleSectionStyles();
-}
 
 /**
  * Populate tab content with sections and settings
@@ -1187,140 +1092,6 @@ function createTabbedSettingsUI(container, settings) {
  * @param {Object} settings - Current settings object
  * @param {boolean} firstSectionAlwaysExpanded - Whether to keep first section expanded
  */
-function populateTabContent(tabs, tabContents, settings, firstSectionAlwaysExpanded = false) {
-    // Get all settings organized by category
-    const categorizedSettings = {};
-
-    // First, organize all settings by their original category
-    themeCustomSettings.forEach(setting => {
-        const category = setting.category || 'general';
-        if (!categorizedSettings[category]) {
-            categorizedSettings[category] = [];
-        }
-        categorizedSettings[category].push(setting);
-    });
-
-    // For each tab, add its related settings
-    tabs.forEach(tab => {
-        const tabContent = document.getElementById(`moonlit-tab-content-${tab.id}`);
-        if (!tabContent) return;
-
-      // Get categories for this tab
-        const categories = tabMappings[tab.id] || [];
-
-      // Track first section in this tab
-        let isFirstSection = true;
-
-      // Process each category
-        categories.forEach(category => {
-        if (!categorizedSettings[category] || categorizedSettings[category].length === 0) {
-            return;
-        }
-
-        // Create collapsible section container
-        const sectionContainer = document.createElement('div');
-        sectionContainer.classList.add('moonlit-section');
-        sectionContainer.id = `moonlit-section-${category}`;
-
-        // Create section header
-        const sectionHeader = document.createElement('div');
-        sectionHeader.classList.add('moonlit-section-header');
-
-        // Add special class for first section header
-        if (isFirstSection) {
-            sectionHeader.classList.add('moonlit-first-section-header');
-        }
-
-        // Create toggle container
-        const sectionToggle = document.createElement('div');
-        sectionToggle.classList.add('moonlit-section-toggle');
-
-        // Create section title with toggle icon
-        const sectionTitle = document.createElement('h4');
-        sectionTitle.style.margin = '0';
-        sectionTitle.style.display = 'flex';
-        sectionTitle.style.justifyContent = 'space-between';
-        sectionTitle.style.alignItems = 'center';
-
-        // Add category title text
-        const titleText = document.createElement('span');
-        titleText.textContent = getCategoryDisplayName(category);
-
-        // Add toggle icon
-        const toggleIcon = document.createElement('i');
-        toggleIcon.classList.add('fa', 'fa-chevron-down');
-        toggleIcon.style.transition = 'transform 0.3s ease';
-
-        // Handle special case for first section
-        if (isFirstSection && firstSectionAlwaysExpanded) {
-          // Always keep first section expanded
-            sectionContainer.classList.add('expanded');
-            sectionContainer.classList.add('moonlit-first-section');
-            toggleIcon.style.transform = 'rotate(180deg)';
-
-          // Hide toggle icon to prevent collapsing
-            toggleIcon.style.visibility = 'hidden';
-            sectionToggle.style.cursor = 'default';
-        } else {
-          // Check if section should be expanded (from localStorage)
-            const isExpanded = getSectionExpandState(category);
-            if (isExpanded) {
-                sectionContainer.classList.add('expanded');
-                toggleIcon.style.transform = 'rotate(180deg)';
-            }
-        }
-
-        // Assemble title and add to toggle
-        sectionTitle.appendChild(titleText);
-        sectionTitle.appendChild(toggleIcon);
-        sectionToggle.appendChild(sectionTitle);
-        sectionHeader.appendChild(sectionToggle);
-
-        // Create section content
-        const sectionContent = document.createElement('div');
-        sectionContent.classList.add('moonlit-section-content');
-
-        // Add click event to toggle section
-        if (!(isFirstSection && firstSectionAlwaysExpanded)) {
-        sectionToggle.addEventListener('click', () => {
-            // Toggle expanded class
-            sectionContainer.classList.toggle('expanded');
-
-            // Update icon rotation
-            if (sectionContainer.classList.contains('expanded')) {
-                toggleIcon.style.transform = 'rotate(180deg)';
-                // Save expanded state
-                saveSectionExpandState(category, true);
-                } else {
-                toggleIcon.style.transform = 'rotate(0deg)';
-                // Save collapsed state
-                saveSectionExpandState(category, false);
-                }
-            });
-        }
-
-        // Create settings for this category
-        const categorySettings = categorizedSettings[category];
-        categorySettings.forEach(setting => {
-            const settingContainer = document.createElement('div');
-            settingContainer.classList.add('theme-setting-item');
-
-            createSettingItem(settingContainer, setting, settings);
-            sectionContent.appendChild(settingContainer);
-        });
-
-        // Assemble section
-        sectionContainer.appendChild(sectionHeader);
-        sectionContainer.appendChild(sectionContent);
-
-        // Add to tab content
-        tabContent.appendChild(sectionContainer);
-
-        // After processing the first section, update flag
-        isFirstSection = false;
-        });
-    });
-}
 
 /**
  * Enhanced populateTabContent without expand/collapse all buttons
@@ -1328,817 +1099,17 @@ function populateTabContent(tabs, tabContents, settings, firstSectionAlwaysExpan
  * @param {HTMLElement} tabContents - Container for tab content
  * @param {Object} settings - Current settings object
  */
-function enhancedPopulateTabContent(tabs, tabContents, settings) {
-    // Call original function to create all sections, with firstSectionAlwaysExpanded flag
-    populateTabContent(tabs, tabContents, settings, true);
-}
 
 /**
  * Save section expand/collapse state to localStorage
  * @param {string} category - Category ID
  * @param {boolean} isExpanded - Whether section is expanded
  */
-function saveSectionExpandState(category, isExpanded) {
-    try {
-        // Get existing states or create new object
-        const stateKey = `moonlit_section_states`;
-        let sectionStates = JSON.parse(localStorage.getItem(stateKey) || '{}');
-
-        // Update state for this category
-        sectionStates[category] = isExpanded;
-
-        // Save back to localStorage
-        localStorage.setItem(stateKey, JSON.stringify(sectionStates));
-    } catch (error) {
-        // Silent error handling in case localStorage is not available
-    }
-}
-
-/**
- * Get section expand/collapse state from localStorage
- * @param {string} category - Category ID
- * @returns {boolean} - Whether section should be expanded
- */
-function getSectionExpandState(category) {
-    try {
-        // Get existing states
-        const stateKey = `moonlit_section_states`;
-        const sectionStates = JSON.parse(localStorage.getItem(stateKey) || '{}');
-
-        // Return state for this category, default to expanded
-        return sectionStates[category] !== undefined ? sectionStates[category] : true;
-    } catch (error) {
-        // Silent error handling in case localStorage is not available
-        return true; // Default to expanded
-    }
-}
-
-/**
- * Save tab state to localStorage
- * @param {string} tabId - Tab ID
- */
-function saveActiveTab(tabId) {
-    try {
-        localStorage.setItem('moonlit_active_tab', tabId);
-    } catch (error) {
-        // Silent error handling
-    }
-}
-
-/**
- * Get active tab from localStorage - Updated default tab name
- * @returns {string} - Active tab ID
- */
-function getActiveTab() {
-    try {
-        return localStorage.getItem('moonlit_active_tab') || 'core-settings'; // Default to first tab
-    } catch (error) {
-        // Silent error handling
-        return 'core-settings'; // Default to first tab
-    }
-}
-
-/**
- * Get display name for category - Updated with new category names
- * @param {string} category - Category ID
- * @returns {string} Display name
- */
-function getCategoryDisplayName(category) {
-    const categoryNames = {
-        // Theme Colors
-        'theme-colors': t`Theme Colors`,
-        'chat-style': t`Global Message Style`,
-        'background-effects': t`Background Effects`,
-        'theme-extras': t`Theme Extras`,
-        'raw-css': t`Advanced Custom CSS`,
-
-        // Chat Interface
-        'chat-general': t`General Chat Settings`,
-        'visual-novel': t`Visual Novel Mode`,
-        'chat-echo': t`Echo Style Settings`,
-        'chat-whisper': t`Whisper Style Settings`,
-        'chat-ripple': t`Ripple Style Settings`,
-
-        // Mobile Devices
-        'mobile-global-settings': t`Mobile Global Settings`,
-        'mobile-detailed-settings': t`Mobile Detailed Settings`,
-
-        // Legacy categories (for backwards compatibility)
-        'colors': t`Theme Colors`,
-        'background': t`Background Settings`,
-        'chat': t`Chat Interface Settings`,
-        'visualNovel': t`Visual Novel Mode`,
-        'features': t`Advanced Features`,
-        'general': t`General Settings`,
-        'mobileSettings': t`Mobile Device Settings`
-    };
-
-    return categoryNames[category] || category;
-}
-
-/**
- * Add tab styles to document
- */
-function addTabStyles() {
-    // Check if styles already added
-    if (document.getElementById('moonlit-tab-styles')) {
-        return;
-    }
-
-    // Create style element
-    const styleElement = document.createElement('style');
-    styleElement.id = 'moonlit-tab-styles';
-
-    // Add tab styles
-    styleElement.textContent = `
-        /* Tabs container */
-        .moonlit-tabs {
-            margin-bottom: 20px;
-        }
-
-        /* Tab buttons */
-        .moonlit-tab-buttons {
-            display: flex;
-            border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-            margin-bottom: 15px;
-        }
-
-        .moonlit-tab-button {
-            padding: 8px 10px;
-            background: none;
-            border: none;
-            border-bottom: 1px solid transparent;
-            cursor: pointer;
-            color: var(--SmartThemeBodyColor);
-            opacity: 0.7;
-            transition: all 0.5s ease;
-        }
-
-        .moonlit-tab-button:hover {
-            opacity: 0.9;
-        }
-
-        .moonlit-tab-button.active {
-            opacity: 1;
-            border-bottom: 1px solid var(--SmartThemeBodyColor);
-        }
-
-        /* Tab content */
-        .moonlit-tab-content {
-            display: none;
-        }
-
-        .moonlit-tab-content.active {
-            display: block;
-        }
-    `;
-
-    // Add to document head
-    document.head.appendChild(styleElement);
-}
-
-/**
- * Add collapsible section styles to document
- */
-function addCollapsibleSectionStyles() {
-    // Check if styles already added
-    if (document.getElementById('moonlit-section-styles')) {
-        return;
-    }
-
-    // Create style element
-    const styleElement = document.createElement('style');
-    styleElement.id = 'moonlit-section-styles';
-
-    // Add section styles - removed section count display
-    styleElement.textContent = `
-      /* Collapsible section container */
-    .moonlit-section {
-        border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent);
-        border-radius: 5px;
-        margin-bottom: 15px;
-        overflow: hidden;
-    }
-
-    /* Section header */
-    .moonlit-section-header {
-        background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
-        padding: 5px 12px;
-        border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 25%, transparent);
-    }
-
-    .moonlit-first-section-header {
-        padding: 10px 12px;
-    }
-
-    .moonlit-first-section .moonlit-section-toggle h4 {
-        font-weight: 600;
-    }
-
-    /* Section toggle */
-    .moonlit-section-toggle {
-        cursor: pointer;
-        user-select: none;
-    }
-
-    .moonlit-section-toggle i {
-        font-size: 0.9em;
-        opacity: 0.7;
-        margin-left: 8px;
-    }
-
-    .moonlit-section.expanded .moonlit-section-toggle i {
-    opacity: 1;
-    }
-
-    /* Section content */
-    .moonlit-section-content {
-        max-height: 0;
-        overflow: hidden;
-        padding: 0 10px;
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        opacity: 0;
-    }
-
-    .moonlit-section.expanded .moonlit-section-content {
-        max-height: 2000px;
-        padding: 10px;
-        opacity: 1;
-    }
-
-    /* Updated Checkbox Styles */
-    .checkbox-container {
-        margin: 10px 0;
-    }
-
-    .checkbox-container > div {
-        display: flex;
-        align-items: center;
-        padding: 2px 0;
-    }
-
-    .checkbox-container label {
-        flex-grow: 1;
-        cursor: pointer;
-        user-select: none;
-        margin-right: 10px;
-    }
-
-    .checkbox-container input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-        cursor: pointer;
-        margin-left: auto;
-        margin-right: unset;
-        accent-color: var(--customThemeColor, var(--SmartThemeBodyColor));
-    }
-
-    .checkbox-container small {
-        margin-top: 4px;
-        padding-left: 0;
-        opacity: 0.7;
-        line-height: 1.4;
-    }
-    `;
-
-    // Add to document head
-    document.head.appendChild(styleElement);
-}
-
 
 /**
 * Create preset manager UI
 * @param {HTMLElement} container - Container to add preset manager
 * @param {Object} settings - Current settings object
-*/
-function createPresetManagerUI(container, settings) {
-    const context = SillyTavern.getContext();
-
-    // Create preset manager container
-    const presetManagerContainer = document.createElement('div');
-    presetManagerContainer.id = 'moonlit-preset-manager';
-    presetManagerContainer.classList.add('moonlit-preset-manager');
-    presetManagerContainer.style.marginBottom = '5px';
-
-    // Create title
-    const presetTitle = document.createElement('h4');
-    presetTitle.textContent = t`Moonlit Echoes Theme Presets`;
-    presetTitle.style.marginBottom = '10px';
-    presetManagerContainer.appendChild(presetTitle);
-
-    // Create preset selector (full width)
-    const presetSelector = document.createElement('select');
-    presetSelector.id = 'moonlit-preset-selector';
-    presetSelector.classList.add('moonlit-preset-selector');
-    presetSelector.style.width = '100%';
-
-    // Add all available presets
-    const presets = settings.presets || {"Default": {}};
-    for (const presetName in presets) {
-        const option = document.createElement('option');
-        option.value = presetName;
-        option.textContent = presetName;
-        option.selected = settings.activePreset === presetName;
-        presetSelector.appendChild(option);
-    }
-
-    // Preset selector change event
-    presetSelector.addEventListener('change', () => {
-        loadPreset(presetSelector.value);
-    });
-
-    // Add preset selector directly to container (not in a row)
-    presetManagerContainer.appendChild(presetSelector);
-
-    // Create new buttons row
-    const buttonsRow = document.createElement('div');
-    buttonsRow.style.display = 'flex';
-    buttonsRow.style.alignItems = 'center';
-    buttonsRow.style.gap = '8px';
-    buttonsRow.style.justifyContent = 'flex-start';
-
-    // Create preset operation buttons
-    const importButton = document.createElement('button');
-    importButton.id = 'moonlit-preset-import';
-    importButton.classList.add('menu_button');
-    importButton.title = t`Import Preset`;
-    importButton.innerHTML = '<i class="fa-solid fa-file-import"></i>';
-    importButton.addEventListener('click', importPreset);
-    buttonsRow.appendChild(importButton);
-
-    const exportButton = document.createElement('button');
-    exportButton.id = 'moonlit-preset-export';
-    exportButton.classList.add('menu_button');
-    exportButton.title = t`Export Preset`;
-    exportButton.innerHTML = '<i class="fa-solid fa-file-export"></i>';
-    exportButton.addEventListener('click', exportActivePreset);
-    buttonsRow.appendChild(exportButton);
-
-    const saveButton = document.createElement('button');
-    saveButton.id = 'moonlit-preset-save';
-    saveButton.classList.add('menu_button');
-    saveButton.title = t`Update Current Preset`;
-    saveButton.innerHTML = '<i class="fa-solid fa-save"></i>';
-    saveButton.addEventListener('click', updateCurrentPreset);
-    buttonsRow.appendChild(saveButton);
-
-    const newButton = document.createElement('button');
-    newButton.id = 'moonlit-preset-new';
-    newButton.classList.add('menu_button');
-    newButton.title = t`Save as New Preset`;
-    newButton.innerHTML = '<i class="fa-solid fa-file-circle-plus"></i>';
-    newButton.addEventListener('click', saveAsNewPreset);
-    buttonsRow.appendChild(newButton);
-
-    const deleteButton = document.createElement('button');
-    deleteButton.id = 'moonlit-preset-delete';
-    deleteButton.classList.add('menu_button');
-    deleteButton.title = t`Delete Preset`;
-    deleteButton.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
-    deleteButton.addEventListener('click', deleteCurrentPreset);
-    buttonsRow.appendChild(deleteButton);
-
-    // Add buttons row to container
-    presetManagerContainer.appendChild(buttonsRow);
-
-    // Create file input (hidden)
-    const fileInput = document.createElement('input');
-    fileInput.id = 'moonlit-preset-file-input';
-    fileInput.type = 'file';
-    fileInput.accept = '.json';
-    fileInput.style.display = 'none';
-    fileInput.addEventListener('change', handlePresetFileSelected);
-    presetManagerContainer.appendChild(fileInput);
-
-    // Add preset manager to container
-    container.appendChild(presetManagerContainer);
-}
-
-/**
-* Initialize preset manager
-* Set global events and handlers
-*/
-function initPresetManager() {
-}
-
-/**
-* Handle preset file selection
-* @param {Event} event - File selection event
-*/
-function handlePresetFileSelected(event) {
-const file = event.target.files[0];
-if (!file) return;
-
-const reader = new FileReader();
-reader.onload = function(e) {
-    try {
-        const jsonData = JSON.parse(e.target.result);
-
-        // Check file format
-        if (!jsonData.moonlitEchoesPreset || !jsonData.presetName || !jsonData.settings) {
-            throw new Error(t`Invalid Moonlit Echoes theme preset file format`);
-        }
-
-        // Get SillyTavern context
-        const context = SillyTavern.getContext();
-        const settings = context.extensionSettings[settingsKey];
-
-        // Get preset name
-        const presetName = jsonData.presetName;
-
-        // Create new preset
-        settings.presets[presetName] = jsonData.settings;
-
-        // Set as active preset
-        settings.activePreset = presetName;
-
-        // Apply preset settings to current settings
-        applyPresetToSettings(presetName);
-
-        // Update preset selector
-        updatePresetSelector();
-
-        // Save settings
-        context.saveSettingsDebounced();
-
-        // Show success message
-        toastr.success(t`Preset "${presetName}" imported successfully`);
-
-    } catch (error) {
-        toastr.error(`Error importing preset: ${error.message}`);
-    }
-
-    // Reset file input to allow selecting the same file again
-    event.target.value = '';
-};
-
-reader.readAsText(file);
-}
-
-/**
-* Import preset
-* Trigger file selection dialog
-*/
-function importPreset() {
-const fileInput = document.getElementById('moonlit-preset-file-input');
-if (fileInput) {
-    fileInput.click();
-} else {
-    toastr.error(t`File input element not found`);
-}
-}
-
-/**
- * Export Active Preset
- * Use "[Moonlit] preset_name" format for exported files
- */
-function exportActivePreset() {
-    const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
-
-    // Get active preset
-    const presetName = settings.activePreset;
-    const preset = settings.presets[presetName];
-
-    if (!preset) {
-        toastr.error(t`Preset "${presetName}" not found`);
-        return;
-    }
-
-    // Create export JSON
-    const exportData = {
-        moonlitEchoesPreset: true,
-        presetVersion: THEME_VERSION,
-        presetName: presetName, // Don't add prefix in JSON data, only use in filename
-        settings: preset
-    };
-
-    // Convert to JSON string
-    const jsonString = JSON.stringify(exportData, null, 2);
-
-    // Create download blob
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-
-    // Create and trigger download link, using prefixed format for naming
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `[Moonlit] ${presetName.replace(/\s+/g, '-')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    // Show success message
-    toastr.success(t`Preset "${presetName}" exported successfully`);
-}
-
-/**
-* Update current preset
-* Save current settings to active preset
-*/
-function updateCurrentPreset() {
-const context = SillyTavern.getContext();
-const settings = context.extensionSettings[settingsKey];
-
-// Get active preset name
-const presetName = settings.activePreset;
-
-// Ensure not deleting Default preset
-if (presetName === 'Default' && Object.keys(settings.presets).length > 1) {
-    // Ask user if they want to update Default preset
-    if (!confirm(t`Are you sure you want to update the Default preset? This will overwrite the original settings.`)) {
-        return;
-    }
-}
-
-// Collect current settings
-const currentSettings = {};
-themeCustomSettings.forEach(setting => {
-    const { varId } = setting;
-    currentSettings[varId] = settings[varId];
-});
-
-// Update preset
-settings.presets[presetName] = currentSettings;
-
-// Save settings
-context.saveSettingsDebounced();
-
-// Show success message
-toastr.success(t`Moonlit Echoes theme preset "${presetName}" updated successfully`);
-}
-
-/**
-* Save as new preset
-* Standardize export format as "[Moonlit] preset name"
-*/
-function saveAsNewPreset() {
-    // Import popup-related functions
-    import('../../../popup.js').then(({ POPUP_TYPE, callGenericPopup }) => {
-        // Use system dialog instead of native prompt
-        callGenericPopup(
-            `<h3 data-i18n="Save New Moonlit Echoes Theme Preset">Save New Moonlit Echoes Theme Preset</h3>
-            <p data-i18n="Please enter a name for your new Moonlit Echoes theme preset:">Please enter a name for your new Moonlit Echoes theme preset:</p>`,
-            POPUP_TYPE.INPUT,
-            '',
-            'New preset name'
-        ).then((presetName) => {
-            // Check if canceled
-            if (!presetName) return;
-
-            // Check if name is valid
-            if (!presetName.trim()) {
-                toastr.error('Preset name cannot be empty');
-                return;
-            }
-
-            const context = SillyTavern.getContext();
-            const settings = context.extensionSettings[settingsKey];
-
-            // Check if already exists
-            if (settings.presets[presetName]) {
-                // Use system confirmation dialog
-                import('../../../popup.js').then(({ POPUP_TYPE, callGenericPopup }) => {
-                    callGenericPopup(
-                        `<h3 data-i18n='Confirm Overwrite">Confirm Overwrite</h3>
-                        <p data-i18n='A preset named "${presetName}" already exists. Do you want to overwrite it?'>A preset named "${presetName}" already exists. Do you want to overwrite it?</p>`,
-                        POPUP_TYPE.CONFIRM
-                    ).then((confirmed) => {
-                        if (!confirmed) return;
-                        createNewPreset(presetName);
-                    });
-                });
-            } else {
-                createNewPreset(presetName);
-            }
-        });
-    });
-
-    // Function to create new preset
-    function createNewPreset(presetName) {
-        const context = SillyTavern.getContext();
-        const settings = context.extensionSettings[settingsKey];
-
-        // Collect current settings
-        const currentSettings = {};
-        themeCustomSettings.forEach(setting => {
-            const { varId } = setting;
-            currentSettings[varId] = settings[varId];
-        });
-
-        // Create new preset
-        settings.presets[presetName] = currentSettings;
-
-        // Set as active preset
-        settings.activePreset = presetName;
-
-        // Update Moonlit preset selector
-        updatePresetSelector();
-
-        // No longer update UI Theme selector, completely separate the two
-
-        // Sync Moonlit presets with theme list for deletion (but don't add new presets)
-        syncMoonlitPresetsWithThemeList();
-
-        // Save settings
-        context.saveSettingsDebounced();
-
-        // Show success message
-        toastr.success(t`Preset "${presetName}" saved successfully`);
-    }
-}
-
-/**
-* Delete current preset
-*/
-function deleteCurrentPreset() {
-    const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
-
-    // Get active preset name
-    const presetName = settings.activePreset;
-
-    // Prevent deleting the last preset
-    if (Object.keys(settings.presets).length <= 1) {
-        toastr.error(t`Cannot delete the only preset`);
-        return;
-    }
-
-    // Ensure not deleting Moonlit Echoes preset
-    if (presetName === 'Moonlit Echoes') {
-        toastr.error(t`Cannot delete the Moonlit Echoes theme preset`);
-        return;
-    }
-
-    // Use dynamic import for popup module, explicitly use callGenericPopup
-    import('../../../popup.js').then((popupModule) => {
-        // Use correct function name
-        const { POPUP_TYPE, callGenericPopup } = popupModule;
-
-        // Use popup to confirm deletion
-        callGenericPopup(
-            `<h3>${t`Delete Theme Preset`}</h3><p>${t`Are you sure you want to delete the preset "${presetName}"?`}</p>`,
-            POPUP_TYPE.CONFIRM
-        ).then((confirmed) => {
-            if (!confirmed) return;
-
-            // Remove corresponding theme from UI theme selector
-            const themeSelector = document.getElementById('themes');
-            if (themeSelector) {
-                // Find and remove corresponding option
-                const themeName = `${presetName} - by Rivelle`;
-                for (let i = 0; i < themeSelector.options.length; i++) {
-                    if (themeSelector.options[i].value === themeName) {
-                        themeSelector.remove(i);
-                        break;
-                    }
-                }
-            }
-
-            // Delete preset
-            delete settings.presets[presetName];
-
-            // Switch to Default preset
-            settings.activePreset = 'Default';
-
-            // Apply Default preset settings to current settings
-            applyPresetToSettings('Default');
-
-            // Update preset selector
-            updatePresetSelector();
-
-            // Update UI theme list
-            syncMoonlitPresetsWithThemeList();
-
-            // Save settings
-            context.saveSettingsDebounced();
-
-            // Show success message
-            toastr.success(t`Preset "${presetName}" deleted successfully`);
-        });
-    }).catch(error => {
-        // If dynamic import fails, fall back to original confirmation method
-        if (confirm(t`Are you sure you want to delete the preset "${presetName}"?`)) {
-            // Remove corresponding theme from UI theme selector
-            const themeSelector = document.getElementById('themes');
-            if (themeSelector) {
-                // Find and remove corresponding option
-                const themeName = `${presetName} - by Rivelle`;
-                for (let i = 0; i < themeSelector.options.length; i++) {
-                    if (themeSelector.options[i].value === themeName) {
-                        themeSelector.remove(i);
-                        break;
-                    }
-                }
-            }
-
-            // Execute deletion logic...
-            delete settings.presets[presetName];
-            settings.activePreset = 'Default';
-            applyPresetToSettings('Default');
-            updatePresetSelector();
-            syncMoonlitPresetsWithThemeList();
-            context.saveSettingsDebounced();
-            toastr.success(t`Preset "${presetName}" deleted successfully`);
-        }
-    });
-}
-
-/**
-* Load preset
-* @param {string} presetName - Name of preset to load
-*/
-function loadPreset(presetName) {
-    const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
-
-    // Check if preset exists
-    if (!settings.presets[presetName]) {
-        toastr.error(t`Preset "${presetName}" not found`);
-        return;
-    }
-
-    // Set active preset
-    settings.activePreset = presetName;
-
-    // Apply preset settings
-    applyPresetToSettings(presetName);
-
-    // Update Moonlit preset selector
-    updatePresetSelector();
-
-    // Selectively update theme selector (only if option already exists)
-    updateThemeSelector(presetName);
-
-    // Save settings
-    context.saveSettingsDebounced();
-}
-
-/**
-* Apply active preset
-* Apply settings from active preset
-*/
-function applyActivePreset() {
-const context = SillyTavern.getContext();
-const settings = context.extensionSettings[settingsKey];
-
-// Ensure there is an active preset
-if (!settings.activePreset || !settings.presets[settings.activePreset]) {
-    // If no active preset or it doesn't exist, use first available preset
-    const firstPreset = Object.keys(settings.presets)[0] || "Default";
-    settings.activePreset = firstPreset;
-}
-
-// Apply preset settings
-applyPresetToSettings(settings.activePreset);
-}
-
-/**
-* Apply preset settings to current settings
-* @param {string} presetName - Preset name
-*/
-function applyPresetToSettings(presetName) {
-    const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
-
-    // Get preset
-    const preset = settings.presets[presetName];
-    if (!preset) return;
-
-    // Apply all settings
-    themeCustomSettings.forEach(setting => {
-        const { varId, default: defaultValue } = setting;
-        const value = preset[varId] !== undefined ? preset[varId] : defaultValue;
-        settings[varId] = value;
-        applyThemeSetting(varId, value);
-    });
-
-    // Apply all CSS variables
-    applyAllThemeSettings();
-
-    // Update UI
-    updateSettingsUI();
-
-    // Add delay for handling color settings and selectors
-    setTimeout(() => {
-        themeCustomSettings.forEach(setting => {
-            const { varId, type } = setting;
-            const value = settings[varId];
-            if (value !== undefined) {
-                if (type === 'color') {
-                    updateColorPickerUI(varId, value);
-                } else if (type === 'select') {
-                    updateSelectUI(varId, value);
-                }
-            }
-        });
-    }, 100);  // 100ms delay to ensure UI has updated
-}
-
-/**
-* Update settings UI
-* Update UI state of all settings based on current settings
 */
 function updateSettingsUI() {
 const context = SillyTavern.getContext();
@@ -2296,61 +1267,40 @@ function updateCheckboxUI(varId, value) {
 * Update preset selector
 * Repopulate preset selector and select current active preset
 */
-function updatePresetSelector() {
-const presetSelector = document.getElementById('moonlit-preset-selector');
-if (!presetSelector) return;
-
-// Get settings
-const context = SillyTavern.getContext();
-const settings = context.extensionSettings[settingsKey];
-
-// Clear selector
-presetSelector.innerHTML = '';
-
-// Add all available presets
-for (const presetName in settings.presets) {
-    const option = document.createElement('option');
-    option.value = presetName;
-    option.textContent = presetName;
-    option.selected = settings.activePreset === presetName;
-    presetSelector.appendChild(option);
-}
-}
-
 /**
-* Add theme creator information to settings panel
-* @param {HTMLElement} [container] - Optional container, uses default settings container if not provided
-*/
+ * Add theme creator information to settings panel
+ * @param {HTMLElement} [container] - Optional container, uses default settings container if not provided
+ */
 function addThemeCreatorInfo(container) {
-// Check if creator info already added
-if (document.getElementById('moonlit-echoes-creator')) return;
+    // Check if creator info already added
+    if (document.getElementById('moonlit-echoes-creator')) return;
 
-// If no container passed, use default settings container
-if (!container) {
-    container = document.querySelector('.settings-container');
-}
+    // If no container passed, use default settings container
+    if (!container) {
+        container = document.querySelector('.settings-container');
+    }
 
-// Check if container exists
-if (!container) return;
+    // Check if container exists
+    if (!container) return;
 
-// Create creator info container
-const creatorContainer = document.createElement('div');
-creatorContainer.classList.add('moonlit-echoes', 'flex-container', 'flexFlowColumn');
-creatorContainer.style.marginTop = '5px';
-creatorContainer.style.marginBottom = '15px';
-creatorContainer.style.textAlign = 'center';
+    // Create creator info container
+    const creatorContainer = document.createElement('div');
+    creatorContainer.classList.add('moonlit-echoes', 'flex-container', 'flexFlowColumn');
+    creatorContainer.style.marginTop = '5px';
+    creatorContainer.style.marginBottom = '15px';
+    creatorContainer.style.textAlign = 'center';
 
-// Set HTML content
-creatorContainer.innerHTML = `
-    <small id="moonlit-echoes-creator">
-        <span>Created with Heartfelt Passion by</span>
-        <a href="https://github.com/RivelleDays" target="_blank" rel="noopener noreferrer">Rivelle</a><br>
-        <span>Dedicated to All 可愛 (Kind & Wonderful) People</span>
-    </small>
-`;
+    // Set HTML content
+    creatorContainer.innerHTML = `
+        <small id="moonlit-echoes-creator">
+            <span>Created with Heartfelt Passion by</span>
+            <a href="https://github.com/RivelleDays" target="_blank" rel="noopener noreferrer">Rivelle</a><br>
+            <span>Dedicated to All 可愛 (Kind & Wonderful) People</span>
+        </small>
+    `;
 
-// Add to settings panel container
-container.appendChild(creatorContainer);
+    // Add to settings panel container
+    container.appendChild(creatorContainer);
 }
 
 
@@ -4010,62 +2960,6 @@ window.initializeThemeColorOnDemand = function() {
     applyAllThemeSettings();
     syncMoonlitPresetsWithThemeList();
 };
-
-// Sync Moonlit presets with theme list
-function syncMoonlitPresetsWithThemeList() {
-    const context = SillyTavern.getContext();
-    const settings = context.extensionSettings[settingsKey];
-    const themeSelector = document.getElementById('themes');
-
-    if (!themeSelector) return;
-
-    // Get all presets
-    const presets = settings.presets || {};
-
-    // Create a set of preset options already in theme selector
-    const existingPresetOptions = new Set();
-
-    // Identify which preset options are already in theme selector
-    Array.from(themeSelector.options).forEach(option => {
-        // Check if this option corresponds to one of our presets
-        if (Object.keys(presets).includes(option.value)) {
-            existingPresetOptions.add(option.value);
-        }
-    });
-
-    // Find and remove options for presets that no longer exist (delete deleted presets from UI Theme selector)
-    for (let i = themeSelector.options.length - 1; i >= 0; i--) {
-        const option = themeSelector.options[i];
-        const optionValue = option.value;
-
-        // If option corresponds to a preset but that preset has been deleted, remove from selector
-        if (existingPresetOptions.has(optionValue) && !presets[optionValue]) {
-            themeSelector.remove(i);
-        }
-    }
-
-    // Don't add any presets to theme selector at all, including official ones
-    // This part of code has been removed
-
-    // If current theme is one of our presets and it exists in theme selector, ensure correct selection
-    if (settings.enabled) {
-        const activePreset = settings.activePreset;
-
-        // Check if this option exists in selector
-        let optionExists = false;
-        for (let i = 0; i < themeSelector.options.length; i++) {
-            if (themeSelector.options[i].value === activePreset) {
-                optionExists = true;
-                break;
-            }
-        }
-
-        // Only sync selection if option exists
-        if (optionExists && themeSelector.value !== activePreset) {
-            themeSelector.value = activePreset;
-        }
-    }
-}
 
 // Ensure modern compact styles are added after page load
 document.addEventListener('DOMContentLoaded', function() {
