@@ -622,7 +622,6 @@ body.documentstyle .last_mes .lacommon--quickActions[data-lacommon--anchor="bott
 
         &::before {
             visibility: visible;
-            position: absolute;
             left: 0;
         }
     }
