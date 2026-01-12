@@ -50,7 +50,12 @@ function runDomReadyHandlers() {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', runDomReadyHandlers, { once: true });
 } else {
-    runDomReadyHandlers();
+    // Defer to the next tick so circular imports finish initializing before handlers run
+    if (typeof queueMicrotask === 'function') {
+        queueMicrotask(runDomReadyHandlers);
+    } else {
+        setTimeout(runDomReadyHandlers, 0);
+    }
 }
 
 function initializeThemeColorOnDemand() {

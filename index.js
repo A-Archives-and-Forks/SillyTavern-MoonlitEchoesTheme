@@ -602,6 +602,28 @@ function renderExtensionSettings() {
     enabledCheckboxLabel.append(enabledCheckbox, enabledCheckboxText);
     inlineDrawerContent.append(enabledCheckboxLabel);
 
+    // Toggle using original avatar images instead of thumbnails
+    const originalAvatarLabel = document.createElement('label');
+    originalAvatarLabel.classList.add('checkbox_label');
+    originalAvatarLabel.htmlFor = `${settingsKey}-use-original-avatars`;
+
+    const originalAvatarCheckbox = document.createElement('input');
+    originalAvatarCheckbox.id = `${settingsKey}-use-original-avatars`;
+    originalAvatarCheckbox.type = 'checkbox';
+    originalAvatarCheckbox.checked = settings.useOriginalAvatarImages === true;
+
+    originalAvatarCheckbox.addEventListener('change', () => {
+        settings.useOriginalAvatarImages = originalAvatarCheckbox.checked;
+        saveExtensionSettings(context);
+        window.updateAvatars?.();
+    });
+
+    const originalAvatarText = document.createElement('span');
+    originalAvatarText.textContent = t`Use original character avatars in chat messages`;
+
+    originalAvatarLabel.append(originalAvatarCheckbox, originalAvatarText);
+    inlineDrawerContent.append(originalAvatarLabel);
+
     // Add spacer for visual spacing
     const spacer = document.createElement('div');
     spacer.style.height = '15px';

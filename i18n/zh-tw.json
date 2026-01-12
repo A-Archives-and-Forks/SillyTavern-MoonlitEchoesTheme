@@ -212,5 +212,6 @@
     "Hide the browser’s up/down arrows in number input fields to give more space for typing": "隱藏瀏覽器在數值輸入欄位中的上下箭頭，以提供更多輸入空間",
     "Compact Worlds/Lorebooks Top Bar": "精簡 Worlds／Lorebooks 頂部欄",
     "Make the top fields in Worlds/Lorebooks more compact by reducing header padding and entry spacing": "透過減少標頭內距與條目間距，讓 Worlds／Lorebooks 的頂部欄位更為緊湊",
-    "Message Text Line Height": "訊息內文行高"
+    "Message Text Line Height": "訊息內文行高",
+    "Use original character avatars in chat messages": "在聊天訊息中使用原始角色頭像"
 }

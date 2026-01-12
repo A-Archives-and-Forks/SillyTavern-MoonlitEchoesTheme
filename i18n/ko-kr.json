@@ -212,5 +212,6 @@
     "Hide the browser’s up/down arrows in number input fields to give more space for typing": "숫자 입력 필드에서 브라우저의 위/아래 화살표를 숨겨 입력 공간을 늘립니다",
     "Compact Worlds/Lorebooks Top Bar": "Worlds/Lorebooks 상단 바 간소화",
     "Make the top fields in Worlds/Lorebooks more compact by reducing header padding and entry spacing": "헤더 패딩과 항목 간격을 줄여 Worlds/Lorebooks의 상단 필드를 더욱 컴팩트하게 만듭니다",
-    "Message Text Line Height": "메시지 텍스트 줄 간격"
+    "Message Text Line Height": "메시지 텍스트 줄 간격",
+    "Use original character avatars in chat messages": "채팅 메시지에서 원본 캐릭터 아바타 사용"
 }

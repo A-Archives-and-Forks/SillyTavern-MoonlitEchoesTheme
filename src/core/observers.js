@@ -1,3 +1,99 @@
+import { getSettings as getExtensionSettings } from '../services/settings-service.js';
+
+function stripOrigin(url) {
+    if (!url) return '';
+    if (url.startsWith(window.location.origin)) {
+        return url.replace(window.location.origin, '');
+    }
+    return url;
+}
+
+function parseAvatarSource(rawSrc) {
+    if (!rawSrc) return null;
+
+    const normalized = stripOrigin(rawSrc);
+    const trimmed = normalized.startsWith('/') ? normalized.slice(1) : normalized;
+
+    try {
+        const parsed = new URL(normalized, window.location.origin);
+        if (parsed.pathname.endsWith('thumbnail')) {
+            const type = parsed.searchParams.get('type');
+            const file = parsed.searchParams.get('file');
+            if (type && file) {
+                return { type, file: decodeURIComponent(file) };
+            }
+        }
+    } catch (err) {
+        // Ignore URL parse errors and fall back to path inspection
+    }
+
+    if (trimmed.startsWith('characters/')) {
+        return { type: 'avatar', file: trimmed.replace(/^characters\//, '') };
+    }
+
+    if (trimmed.startsWith('User Avatars/')) {
+        return { type: 'persona', file: trimmed.replace(/^User Avatars\//, '') };
+    }
+
+    return { type: null, file: trimmed };
+}
+
+function getAvatarSources(rawSrc) {
+    const info = parseAvatarSource(rawSrc);
+    if (!info) {
+        return { thumb: null, original: null };
+    }
+
+    const { type, file } = info;
+    const ensureAbsolute = (path) => {
+        if (!path) return '';
+        return path.startsWith('/') ? path : `/${path}`;
+    };
+
+    const thumb =
+        type === 'avatar' || type === 'persona'
+            ? `/thumbnail?type=${type}&file=${encodeURIComponent(file)}`
+            : ensureAbsolute(info.file);
+
+    const original =
+        type === 'avatar'
+            ? ensureAbsolute(`characters/${file}`)
+            : type === 'persona'
+                ? ensureAbsolute(`User Avatars/${file}`)
+                : ensureAbsolute(info.file);
+
+    return {
+        thumb: stripOrigin(thumb),
+        original: stripOrigin(original),
+    };
+}
+
+function applyAvatarSources(mes, avatarImg, preferOriginal) {
+    const srcCandidate = avatarImg.getAttribute('src') || avatarImg.getAttribute('data-src');
+    if (!srcCandidate) return;
+
+    const { thumb, original } = getAvatarSources(srcCandidate);
+    if (!thumb && !original) return;
+
+    const thumbUrl = thumb || original;
+    const originalUrl = original || thumbUrl;
+    const targetUrl = preferOriginal ? originalUrl : thumbUrl;
+
+    mes.dataset.avatarThumb = thumbUrl;
+    mes.dataset.avatarOriginal = originalUrl;
+    mes.dataset.avatar = targetUrl;
+
+    mes.style.setProperty('--mes-avatar-thumb-url', `url('${thumbUrl}')`);
+    mes.style.setProperty('--mes-avatar-original-url', `url('${originalUrl}')`);
+    mes.style.setProperty('--mes-avatar-url', `url('${targetUrl}')`);
+
+    const currentSrc = stripOrigin(avatarImg.getAttribute('src') || '');
+    const desiredSrc = stripOrigin(targetUrl);
+    if (desiredSrc && currentSrc !== desiredSrc) {
+        avatarImg.setAttribute('src', targetUrl);
+    }
+}
+
 /**
  * Initialize avatar injector observer.
  * Injects avatar URLs into message elements so they can be used in CSS.
@@ -5,36 +101,15 @@
  */
 export function initAvatarInjector() {
     function updateAvatars() {
-        document.querySelectorAll('.mes').forEach((mes) => {
-            if (mes.dataset.avatar) return;
+        const context = SillyTavern.getContext();
+        const settings = getExtensionSettings(context) || {};
+        const preferOriginal = settings.useOriginalAvatarImages === true;
 
+        document.querySelectorAll('.mes').forEach((mes) => {
             const avatarImg = mes.querySelector('.avatar img');
             if (!avatarImg) return;
 
-            let src = avatarImg.src || avatarImg.getAttribute('data-src');
-            if (!src) return;
-
-            if (src.startsWith(window.location.origin)) {
-                src = src.replace(window.location.origin, '');
-            }
-
-            avatarImg.addEventListener(
-                'load',
-                () => {
-                    let loadedSrc = avatarImg.src;
-                    if (loadedSrc.startsWith(window.location.origin)) {
-                        loadedSrc = loadedSrc.replace(window.location.origin, '');
-                    }
-                    mes.dataset.avatar = loadedSrc;
-                    mes.style.setProperty('--mes-avatar-url', `url('${mes.dataset.avatar}')`);
-                },
-                { once: true }
-            );
-
-            if (avatarImg.complete && src && !src.endsWith('/')) {
-                mes.dataset.avatar = src;
-                mes.style.setProperty('--mes-avatar-url', `url('${mes.dataset.avatar}')`);
-            }
+            applyAvatarSources(mes, avatarImg, preferOriginal);
         });
     }
 

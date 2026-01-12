@@ -212,5 +212,6 @@
     "Hide the browser’s up/down arrows in number input fields to give more space for typing": "Ẩn các mũi tên lên/xuống của trình duyệt trong trường nhập số để có thêm không gian gõ",
     "Compact Worlds/Lorebooks Top Bar": "Thu gọn thanh trên cùng của Worlds/Lorebooks",
     "Make the top fields in Worlds/Lorebooks more compact by reducing header padding and entry spacing": "Giảm padding của phần tiêu đề và khoảng cách giữa các mục để các trường trên cùng trong Worlds/Lorebooks gọn hơn",
-    "Message Text Line Height": "Chiều cao dòng của văn bản tin nhắn"
+    "Message Text Line Height": "Chiều cao dòng của văn bản tin nhắn",
+    "Use original character avatars in chat messages": "Sử dụng ảnh đại diện gốc của nhân vật trong tin nhắn chat"
 }

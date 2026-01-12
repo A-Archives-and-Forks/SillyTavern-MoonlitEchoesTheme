@@ -212,5 +212,6 @@
     "Hide the browser’s up/down arrows in number input fields to give more space for typing": "ซ่อนปุ่มลูกศรขึ้น/ลงของเบราว์เซอร์ในช่องป้อนค่าตัวเลขเพื่อเพิ่มพื้นที่สำหรับพิมพ์",
     "Compact Worlds/Lorebooks Top Bar": "ทำให้แถบด้านบนของ Worlds/Lorebooks กะทัดรัด",
     "Make the top fields in Worlds/Lorebooks more compact by reducing header padding and entry spacing": "ลดระยะห่างภายในส่วนหัวและระยะห่างระหว่างรายการ เพื่อให้ช่องข้อมูลด้านบนใน Worlds/Lorebooks กระชับยิ่งขึ้น",
-    "Message Text Line Height": "ความสูงบรรทัดของข้อความ"
+    "Message Text Line Height": "ความสูงบรรทัดของข้อความ",
+    "Use original character avatars in chat messages": "ใช้ภาพอวตารตัวละครต้นฉบับในข้อความแชท"
 }
