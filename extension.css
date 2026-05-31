@@ -107,6 +107,12 @@
 
 /* --- Chat Info 聊天資訊 --- */
 
+:root {
+    --moonlitTauriTopInset: max(var(--tt-inset-top, env(safe-area-inset-top, 0px)), 0px);
+    --moonlitTopInfoBarTop: calc(var(--topBarBlockSize) + var(--moonlitTauriTopInset));
+    --moonlitTopInfoBarPanelHeight: calc(var(--tt-base-viewport-height, var(--doc-height, 100dvh)) - var(--moonlitTopInfoBarTop));
+}
+
 body:has(#extensionTopBar) {
     #sheld {
         padding-top: calc(var(--topBarBlockSize)) !important;
@@ -157,7 +163,7 @@ body.waifuMode:has(#extensionTopBar) {
     transition: all 0.8s ease;
 
     @media screen and (max-width: 1000px) {
-        top: var(--topBarBlockSize) !important;
+        top: var(--moonlitTopInfoBarTop) !important;
         width: 100% !important;
         border-radius: 0 !important;
         opacity: 0.8;
@@ -178,9 +184,9 @@ body.waifuMode:has(#extensionConnectionProfiles.visible) #extensionTopBar {
 }
 
 #extensionSideBar {
-    top: var(--topBarBlockSize) !important;
-    max-height: calc(100dvh - var(--topBarBlockSize)) !important;
-    min-height: calc(100dvh - var(--topBarBlockSize)) !important;
+    top: var(--moonlitTopInfoBarTop) !important;
+    max-height: var(--moonlitTopInfoBarPanelHeight) !important;
+    min-height: var(--moonlitTopInfoBarPanelHeight) !important;
     border-radius: 0 !important;
 
     &.visible {
