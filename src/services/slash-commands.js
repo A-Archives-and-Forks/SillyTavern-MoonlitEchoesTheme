@@ -37,6 +37,8 @@ export function initializeSlashCommands() {
 
             document.body.classList.add(styleName);
 
+            window.updateAvatars?.();
+
             localStorage.setItem('savedChatStyle', styleValue);
 
             return t`Chat style switched to ${styleName}`;
