@@ -103,7 +103,9 @@ export function initAvatarInjector() {
     function updateAvatars() {
         const context = SillyTavern.getContext();
         const settings = getExtensionSettings(context) || {};
-        const preferOriginal = settings.useOriginalAvatarImages === true;
+        const preferOriginal =
+            settings.useOriginalAvatarImages === true ||
+            document.body.classList.contains('ripplestyle');
 
         document.querySelectorAll('.mes').forEach((mes) => {
             const avatarImg = mes.querySelector('.avatar img');

@@ -827,6 +827,8 @@ function initChatDisplaySwitcher() {
             case "6": document.body.classList.add("ripplestyle"); break;
             case "7": document.body.classList.add("tidestyle"); break;
         }
+
+        window.updateAvatars?.();
     }
 
     // Always add our options
