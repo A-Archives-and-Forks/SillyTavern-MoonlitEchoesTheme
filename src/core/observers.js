@@ -68,6 +68,14 @@ function getAvatarSources(rawSrc) {
     };
 }
 
+function formatSrcsetUrl(url) {
+    try {
+        return encodeURI(url).replace(/,/g, '%2C');
+    } catch (err) {
+        return url.replace(/,/g, '%2C');
+    }
+}
+
 function applyAvatarSources(mes, avatarImg, preferOriginal) {
     const srcCandidate = avatarImg.getAttribute('src') || avatarImg.getAttribute('data-src');
     if (!srcCandidate) return;
@@ -88,9 +96,15 @@ function applyAvatarSources(mes, avatarImg, preferOriginal) {
     mes.style.setProperty('--mes-avatar-url', `url('${targetUrl}')`);
 
     const currentSrc = stripOrigin(avatarImg.getAttribute('src') || '');
-    const desiredSrc = stripOrigin(targetUrl);
+    const desiredSrc = stripOrigin(thumbUrl);
     if (desiredSrc && currentSrc !== desiredSrc) {
-        avatarImg.setAttribute('src', targetUrl);
+        avatarImg.setAttribute('src', thumbUrl);
+    }
+
+    if (preferOriginal && originalUrl && originalUrl !== thumbUrl) {
+        avatarImg.setAttribute('srcset', formatSrcsetUrl(originalUrl));
+    } else {
+        avatarImg.removeAttribute('srcset');
     }
 }
 

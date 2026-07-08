@@ -1,14 +1,15 @@
 import { defaultSettings, ensureSettingsStructure } from '../config/default-settings.js';
 import { settingsKey, getSettings as getExtensionSettings, saveSettings as saveExtensionSettings } from '../services/settings-service.js';
 import { registerDomReadyHandler } from './lifecycle-hooks.js';
-import { initExtensionUI, toggleCss } from '../../index.js';
 
 /**
  * Initialize the Moonlit Echoes extension context and schedule UI setup.
  * Handles settings bootstrapping, CSS toggling, and defers UI initialization
  * until the DOM is ready.
+ *
+ * @param {{ initExtensionUI: Function, toggleCss: Function }} dependencies - Startup dependencies provided by index.js.
  */
-export function initExtension() {
+export function initExtension({ initExtensionUI, toggleCss }) {
     const context = SillyTavern.getContext();
 
     let extensionSettings = getExtensionSettings(context);

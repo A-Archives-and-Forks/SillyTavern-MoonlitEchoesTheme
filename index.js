@@ -15,13 +15,16 @@ import { tabMappings, themeCustomSettings } from './src/config/theme-settings.js
 import { settingsKey, getSettings as getExtensionSettings, saveSettings as saveExtensionSettings } from './src/services/settings-service.js';
 import { initializeSlashCommands } from './src/services/slash-commands.js';
 import { initExtension } from './src/bootstrap/init-extension.js';
-import './src/bootstrap/lifecycle-hooks.js';
+import { registerDomReadyHandler } from './src/bootstrap/lifecycle-hooks.js';
 import { initControls, toggleSettingsPopout } from './src/ui/controls.js';
 import {
     configurePresetManager,
     createPresetManagerUI,
     initPresetManager,
     applyActivePreset,
+    loadPreset,
+    applyPresetToSettings,
+    syncMoonlitPresetsWithThemeList,
 } from './src/ui/preset-manager.js';
 import { configureSettingsTabs, createTabbedSettingsUI } from './src/ui/settings-tabs.js';
 import {
@@ -34,7 +37,7 @@ import {
     addModernCompactStyles,
 } from './src/ui/settings-factory.js';
 import { applyAllThemeSettings as applyAllThemeSettingsCore } from './src/core/theme-applier.js';
-import { initAvatarInjector } from './src/core/observers.js';
+import { initAvatarInjector, initFormSheldHeightMonitor } from './src/core/observers.js';
 import { addThemeButtonsHint } from './src/services/hints.js';
 import { integrateWithThemeSelector } from './src/services/theme-selector.js';
 
@@ -956,4 +959,161 @@ configureSettingsFactory({
 
 export { addModernCompactStyles };
 
-initExtension();
+function runStartupDomReadyTasks() {
+    try {
+        addModernCompactStyles();
+    } catch (error) {
+        console.error('Moonlit Echoes failed to add compact styles', error);
+    }
+
+    try {
+        syncMoonlitPresetsWithThemeList();
+    } catch (error) {
+        console.error('Moonlit Echoes failed to sync presets after DOM ready', error);
+    }
+}
+
+function initializeThemeColorOnDemand() {
+    applyAllThemeSettings();
+    syncMoonlitPresetsWithThemeList();
+}
+
+function setupPublicMoonlitApi() {
+    window.initializeThemeColorOnDemand = initializeThemeColorOnDemand;
+
+    window.MoonlitEchoesTheme = {
+        init: function() {
+            applyAllThemeSettings();
+            initializeThemeColorOnDemand();
+            syncMoonlitPresetsWithThemeList();
+        },
+
+        addSetting: addCustomSetting,
+
+        applySetting: applyThemeSetting,
+
+        getSettings: function() {
+            return getExtensionSettings();
+        },
+
+        getSettingsConfig: function() {
+            return [...themeCustomSettings];
+        },
+
+        presets: {
+            getAll: function() {
+                const context = SillyTavern.getContext();
+                const settings = getExtensionSettings(context);
+                return settings?.presets || {};
+            },
+
+            getActive: function() {
+                const context = SillyTavern.getContext();
+                const settings = getExtensionSettings(context);
+                return {
+                    name: settings.activePreset,
+                    settings: settings.presets[settings.activePreset] || {}
+                };
+            },
+
+            create: function(name, settingsObj) {
+                const context = SillyTavern.getContext();
+                const settings = getExtensionSettings(context);
+
+                if (!name || typeof name !== 'string') {
+                    return false;
+                }
+
+                settings.presets[name] = settingsObj || {};
+                saveExtensionSettings(context);
+                syncMoonlitPresetsWithThemeList();
+
+                return true;
+            },
+
+            load: function(name) {
+                return loadPreset(name);
+            },
+
+            update: function(name, settingsObj) {
+                const context = SillyTavern.getContext();
+                const settings = getExtensionSettings(context);
+
+                if (!settings.presets[name]) {
+                    return false;
+                }
+
+                settings.presets[name] = settingsObj || settings.presets[name];
+                saveExtensionSettings(context);
+
+                return true;
+            },
+
+            delete: function(name) {
+                const context = SillyTavern.getContext();
+                const settings = getExtensionSettings(context);
+
+                if (name === 'Default') {
+                    return false;
+                }
+
+                if (!settings.presets[name]) {
+                    return false;
+                }
+
+                if (Object.keys(settings.presets).length <= 1) {
+                    return false;
+                }
+
+                if (settings.activePreset === name) {
+                    settings.activePreset = 'Default';
+                    applyPresetToSettings('Default');
+                }
+
+                delete settings.presets[name];
+                saveExtensionSettings(context);
+                syncMoonlitPresetsWithThemeList();
+
+                return true;
+            },
+
+            export: function(name) {
+                const context = SillyTavern.getContext();
+                const settings = getExtensionSettings(context);
+
+                if (!settings.presets[name]) {
+                    return null;
+                }
+
+                return {
+                    moonlitEchoesPreset: true,
+                    presetVersion: THEME_VERSION,
+                    presetName: name,
+                    settings: settings.presets[name]
+                };
+            },
+
+            import: function(jsonData) {
+                if (!jsonData || !jsonData.moonlitEchoesPreset || !jsonData.presetName || !jsonData.settings) {
+                    return false;
+                }
+
+                const context = SillyTavern.getContext();
+                const settings = getExtensionSettings(context);
+                const presetName = jsonData.presetName;
+
+                settings.presets[presetName] = jsonData.settings;
+                saveExtensionSettings(context);
+                syncMoonlitPresetsWithThemeList();
+
+                return true;
+            }
+        }
+    };
+
+    window.formSheldHeightController = initFormSheldHeightMonitor();
+}
+
+setupPublicMoonlitApi();
+initExtension({ initExtensionUI, toggleCss });
+registerDomReadyHandler(runStartupDomReadyTasks);
